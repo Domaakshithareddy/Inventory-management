@@ -2,7 +2,6 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
-// Get all purchases
 router.get('/', auth, async (req, res) => {
   let query = `
     SELECT pu.*, c.name as company_name, g.name as godown_name
@@ -20,7 +19,6 @@ router.get('/', auth, async (req, res) => {
   res.json(result.rows);
 });
 
-// Get purchase items
 router.get('/:id/items', auth, async (req, res) => {
   const result = await pool.query(
     `SELECT pi.*, p.name as product_name FROM purchase_items pi
@@ -31,23 +29,27 @@ router.get('/:id/items', auth, async (req, res) => {
   res.json(result.rows);
 });
 
-// Create purchase (auto increases inventory)
 router.post('/', auth, async (req, res) => {
-  const { company_id, transport_cost, purchase_date, items } = req.body;
+  const { company_id, purchase_date, items, paid_amount, gst_amount, transport_cost } = req.body;
   const godown_id = req.user.godown_id;
-
-  if (!godown_id) return res.status(400).json({ error: 'Admin cannot create purchases. Use godown login.' });
+  if (!godown_id) return res.status(400).json({ error: 'Admin cannot create purchases.' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const total_amount = items.reduce((sum, i) => sum + i.total_price, 0);
+    const items_total = items.reduce((sum, i) => sum + parseFloat(i.total_price), 0);
+    const gst = parseFloat(gst_amount || 0);
+    const transport = parseFloat(transport_cost || 0);
+    const total_amount = items_total + gst + transport;
+
+    const paid = Math.min(parseFloat(paid_amount || 0), total_amount);
+    const status = paid >= total_amount ? 'PAID' : paid > 0 ? 'PARTIAL' : 'PENDING';
 
     const purchase = await client.query(
-      `INSERT INTO purchases (godown_id, company_id, transport_cost, total_amount, purchase_date)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [godown_id, company_id, transport_cost, total_amount, purchase_date]
+      `INSERT INTO purchases (godown_id, company_id, total_amount, purchase_date, paid_amount, payment_status, gst_amount, transport_cost)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [godown_id, company_id, total_amount, purchase_date, paid, status, gst, transport]
     );
     const purchase_id = purchase.rows[0].id;
 
@@ -58,10 +60,12 @@ router.post('/', auth, async (req, res) => {
         [purchase_id, item.product_id, item.quantity_cases, item.price_per_case, item.total_price]
       );
 
-      // Auto increase inventory
       await client.query(
-        `INSERT INTO inventory (godown_id, product_id, quantity_cases, selling_price_per_case, selling_price_per_unit, stock_value)
-         VALUES ($1, $2, $3, (SELECT selling_price FROM products WHERE id=$2), (SELECT selling_price_per_unit FROM products WHERE id=$2), $4)
+        `INSERT INTO inventory (godown_id, product_id, quantity_cases, quantity_units, selling_price_per_case, selling_price_per_unit, stock_value)
+         VALUES ($1, $2, $3, 0,
+           (SELECT selling_price FROM products WHERE id=$2),
+           (SELECT selling_price_per_unit FROM products WHERE id=$2),
+           $4)
          ON CONFLICT (godown_id, product_id) DO UPDATE SET
            quantity_cases = inventory.quantity_cases + $3,
            stock_value = inventory.stock_value + $4`,
@@ -79,23 +83,50 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// Record payment for a purchase
 router.post('/:id/payment', auth, async (req, res) => {
   const { paid_amount } = req.body;
-  // Simple approach: store payments as notes for now, or you can add a payments table
-  // Here we just update payment_status
   const purchase = await pool.query(`SELECT * FROM purchases WHERE id=$1`, [req.params.id]);
   if (!purchase.rows[0]) return res.status(404).json({ error: 'Not found' });
-
   const p = purchase.rows[0];
-  const new_paid = (parseFloat(p.paid_amount) || 0) + parseFloat(paid_amount);
-  const status = new_paid >= p.total_amount + (p.transport_cost || 0) ? 'PAID' : 'PARTIAL';
-
+  const total = parseFloat(p.total_amount);
+  const already_paid = parseFloat(p.paid_amount || 0);
+  const new_paid = Math.min(already_paid + parseFloat(paid_amount), total);
+  const status = new_paid >= total ? 'PAID' : 'PARTIAL';
   const result = await pool.query(
     `UPDATE purchases SET paid_amount=$1, payment_status=$2 WHERE id=$3 RETURNING *`,
     [new_paid, status, req.params.id]
   );
   res.json(result.rows[0]);
+});
+
+router.delete('/:id', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const items = await client.query(`SELECT * FROM purchase_items WHERE purchase_id=$1`, [req.params.id]);
+    const purchase = await client.query(`SELECT * FROM purchases WHERE id=$1`, [req.params.id]);
+    const godown_id = purchase.rows[0]?.godown_id;
+
+    for (const item of items.rows) {
+      await client.query(
+        `UPDATE inventory SET
+           quantity_cases = quantity_cases - $1,
+           stock_value = stock_value - $2
+         WHERE godown_id=$3 AND product_id=$4`,
+        [item.quantity_cases, item.total_price, godown_id, item.product_id]
+      );
+    }
+
+    await client.query(`DELETE FROM purchase_items WHERE purchase_id=$1`, [req.params.id]);
+    await client.query(`DELETE FROM purchases WHERE id=$1`, [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ message: 'Deleted and inventory reversed' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 module.exports = router;

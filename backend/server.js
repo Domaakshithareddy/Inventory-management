@@ -6,7 +6,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/godowns', require('./routes/godowns'));
 app.use('/api/products', require('./routes/products'));
@@ -18,9 +17,10 @@ app.use('/api/routes', require('./routes/routes'));
 app.use('/api/bills', require('./routes/bills'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/free-products', require('./routes/freeProducts'));
+app.use('/api/counter-sales', require('./routes/counterSales'));
 app.use('/api/reports', require('./routes/reports'));
 
 app.get('/', (req, res) => res.send('Inventory API Running'));
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
