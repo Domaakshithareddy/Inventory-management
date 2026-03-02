@@ -14,6 +14,7 @@ const allLinks = [
   { to: "/expenses", label: "Expenses", icon: "💸" },
   { to: "/free-products", label: "Free Products", icon: "🎁" },
   { to: "/reports", label: "Reports", icon: "📈" },
+  { to: "/breakage", label: "Breakage", icon: "🔴" },
 ];
 
 export default function Sidebar() {

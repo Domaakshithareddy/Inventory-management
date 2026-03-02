@@ -19,6 +19,7 @@ app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/free-products', require('./routes/freeProducts'));
 app.use('/api/counter-sales', require('./routes/counterSales'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/breakage', require('./routes/breakage'));
 
 app.get('/', (req, res) => res.send('Inventory API Running'));
 

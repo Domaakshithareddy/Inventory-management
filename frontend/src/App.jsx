@@ -16,6 +16,7 @@ import Expenses from "./pages/Expenses";
 import FreeProducts from "./pages/FreeProducts";
 import Reports from "./pages/Reports";
 import CounterSales from "./pages/CounterSales";
+import Breakage from "./pages/Breakage";
 
 function Layout({ children }) {
   return (
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/free-products" element={<ProtectedRoute><Layout><FreeProducts /></Layout></ProtectedRoute>} />
           <Route path="/counter-sales" element={<ProtectedRoute><Layout><CounterSales /></Layout></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Layout><Reports /></Layout></ProtectedRoute>} />
+          <Route path="/breakage" element={<ProtectedRoute><Layout><Breakage /></Layout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
