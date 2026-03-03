@@ -8,6 +8,7 @@ export default function Companies() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = () => api.get("/companies").then(r => setCompanies(r.data));
   useEffect(() => { load(); }, []);
@@ -17,10 +18,18 @@ export default function Companies() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editing) await api.put(`/companies/${editing}`, form);
-    else await api.post("/companies", form);
-    setModal(false);
-    load();
+    if (loading) return;
+    setLoading(true);
+    try {
+      if (editing) await api.put(`/companies/${editing}`, form);
+      else await api.post("/companies", form);
+      setModal(false);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to save company");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -29,61 +38,149 @@ export default function Companies() {
     load();
   };
 
+  const labelStyle = {
+    fontSize: "11px",
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 600
+  };
+
+  const actionBtn = (color) => ({
+    color,
+    fontSize: "15px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em"
+  });
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="section-title">Companies</h1>
-        <button className="btn-primary" onClick={openAdd}>+ Add Company</button>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
+        <div>
+          <h1 className="section-title">Companies</h1>
+          <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
+            All registered companies
+          </p>
+        </div>
+        <button className="btn-primary" onClick={openAdd}>
+          + Add Company
+        </button>
       </div>
 
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Table */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
             <tr>
               {["Name", "Phone", "Address", "Actions"].map(h => (
-                <th key={h} className="px-4 py-3 text-left">{h}</th>
+                <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {companies.map(c => (
               <tr key={c.id} className="table-row">
-                <td className="px-4 py-3 font-medium">{c.name}</td>
-                <td className="px-4 py-3">{c.phone}</td>
-                <td className="px-4 py-3 text-gray-500">{c.address}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button onClick={() => openEdit(c)} className="text-primary hover:underline text-xs">Edit</button>
-                    <button onClick={() => handleDelete(c.id)} className="text-gray-400 hover:text-red-600 text-xs">Delete</button>
+                <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
+                  {c.name}
+                </td>
+                <td style={{ fontSize: "15px", padding: "16px" }}>
+                  {c.phone || "—"}
+                </td>
+                <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
+                  {c.address || "—"}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <button onClick={() => openEdit(c)} style={actionBtn("#C8102E")}>
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(c.id)} style={actionBtn("#aaaaaa")}>
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {companies.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">No companies yet</p>}
+
+        {companies.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 24px" }}>
+            <p style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "1.2rem",
+              color: "#ccc",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em"
+            }}>
+              No companies yet
+            </p>
+          </div>
+        )}
       </div>
 
+      {/* Modal */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-box">
-            <h2 className="font-display text-2xl font-bold mb-4">{editing ? "Edit Company" : "Add Company"}</h2>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-500 uppercase">Company Name</label>
-                <input className="input mt-1" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+          <div className="modal-box" style={{ maxWidth: "520px", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+              <h2 style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em"
+              }}>
+                {editing ? "Edit Company" : "Add Company"}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Company Name</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  required
+                />
               </div>
-              <div>
-                <label className="text-xs text-gray-500 uppercase">Phone</label>
-                <input className="input mt-1" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Phone</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.phone}
+                  onChange={e => setForm({ ...form, phone: e.target.value })}
+                />
               </div>
-              <div>
-                <label className="text-xs text-gray-500 uppercase">Address</label>
-                <textarea className="input mt-1" rows={3} value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+
+              <div style={{ marginBottom: "24px" }}>
+                <label style={labelStyle}>Address</label>
+                <textarea
+                  className="input"
+                  style={{ marginTop: "6px", minHeight: "80px" }}
+                  value={form.address}
+                  onChange={e => setForm({ ...form, address: e.target.value })}
+                />
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="submit" className="btn-primary flex-1">Save</button>
-                <button type="button" className="btn-outline flex-1" onClick={() => setModal(false)}>Cancel</button>
+
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={loading}>
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

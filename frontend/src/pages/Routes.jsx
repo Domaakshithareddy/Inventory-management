@@ -11,6 +11,7 @@ export default function AppRoutes() {
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const [expandedRoute, setExpandedRoute] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = () => {
     api.get("/routes").then(r => setRoutes(r.data));
@@ -31,10 +32,18 @@ export default function AppRoutes() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editing) await api.put(`/routes/${editing}`, form);
-    else await api.post("/routes", form);
-    setModal(false);
-    load();
+    if (loading) return;
+    setLoading(true);
+    try {
+      if (editing) await api.put(`/routes/${editing}`, form);
+      else await api.post("/routes", form);
+      setModal(false);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to save route");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -43,19 +52,49 @@ export default function AppRoutes() {
     load();
   };
 
+  const labelStyle = {
+    fontSize: "11px",
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 600
+  };
+
+  const actionBtn = (color) => ({
+    color,
+    fontSize: "15px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em"
+  });
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 className="section-title">Routes</h1>
-        <button className="btn-primary" onClick={openAdd}>+ Add Route</button>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
+        <div>
+          <h1 className="section-title">Routes</h1>
+          <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
+            All delivery routes • Latest on top
+          </p>
+        </div>
+        <button className="btn-primary" onClick={openAdd}>
+          + Add Route
+        </button>
       </div>
 
+      {/* Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
             <tr>
               {["Route Name", "Driver", "Phone", "Shops", "Actions"].map(h => (
-                <th key={h}>{h}</th>
+                <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -68,32 +107,57 @@ export default function AppRoutes() {
               return (
                 <>
                   <tr key={r.id} className="table-row">
-                    <td style={{ fontWeight: 500 }}>{r.name}</td>
-                    <td>{r.driver_name || "—"}</td>
-                    <td>{r.driver_phone || "—"}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span className="badge-gray">{routeShops.length} shops</span>
+                    <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
+                      {r.name}
+                    </td>
+                    <td style={{ fontSize: "15px", padding: "16px" }}>
+                      {r.driver_name || "—"}
+                    </td>
+                    <td style={{ fontSize: "15px", padding: "16px" }}>
+                      {r.driver_phone || "—"}
+                    </td>
+                    <td style={{ padding: "16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <span style={{
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          padding: "6px 12px",
+                          background: "#f1f5f9",
+                          borderRadius: "6px",
+                          color: "#475569"
+                        }}>
+                          {routeShops.length} shops
+                        </span>
                         {totalPending > 0 && (
-                          <span style={{ fontSize: "11px", color: "#C8102E", fontWeight: 600 }}>
+                          <span style={{ fontSize: "15px", color: "#C8102E", fontWeight: 700 }}>
                             ₹{totalPending.toLocaleString()} pending
                           </span>
                         )}
                         {routeShops.length > 0 && (
                           <button
                             onClick={() => setExpandedRoute(isExpanded ? null : r.id)}
-                            style={{ fontSize: "11px", color: "#2563eb", background: "none", border: "none", cursor: "pointer" }}>
+                            style={{
+                              fontSize: "13px",
+                              color: "#2563eb",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: 0
+                            }}
+                          >
                             {isExpanded ? "▲ Hide" : "▼ View"}
                           </button>
                         )}
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: "flex", gap: "12px" }}>
-                        <button onClick={() => openEdit(r)}
-                          style={{ color: "#C8102E", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>Edit</button>
-                        <button onClick={() => handleDelete(r.id)}
-                          style={{ color: "#9ca3af", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>Delete</button>
+                    <td style={{ padding: "16px" }}>
+                      <div style={{ display: "flex", gap: "16px" }}>
+                        <button onClick={() => openEdit(r)} style={actionBtn("#C8102E")}>
+                          Edit
+                        </button>
+                        <button onClick={() => handleDelete(r.id)} style={actionBtn("#aaaaaa")}>
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -101,15 +165,31 @@ export default function AppRoutes() {
                   {/* Expanded shops */}
                   {isExpanded && (
                     <tr key={`${r.id}-expanded`}>
-                      <td colSpan={5} style={{ padding: "0 16px 12px 40px", background: "#f9fafb" }}>
-                        <div style={{ fontSize: "12px", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", marginBottom: "8px", paddingTop: "10px" }}>
+                      <td colSpan={5} style={{ padding: "0 16px 16px 32px", background: "#f9fafb" }}>
+                        <div style={{
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          color: "#444",
+                          textTransform: "uppercase",
+                          marginBottom: "8px",
+                          paddingTop: "12px"
+                        }}>
                           Shops in {r.name}
                         </div>
                         <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                            <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
                               {["Shop Name", "Owner", "Phone", "Outstanding"].map(h => (
-                                <th key={h} style={{ textAlign: "left", padding: "4px 8px", color: "#9ca3af", fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
+                                <th key={h} style={{
+                                  textAlign: "left",
+                                  padding: "8px 12px",
+                                  color: "#888",
+                                  fontSize: "11px",
+                                  textTransform: "uppercase",
+                                  fontWeight: 600
+                                }}>
+                                  {h}
+                                </th>
                               ))}
                             </tr>
                           </thead>
@@ -118,12 +198,20 @@ export default function AppRoutes() {
                               const pending = getShopPending(shop.id);
                               return (
                                 <tr key={shop.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                                  <td style={{ padding: "8px 8px", fontWeight: 500 }}>{shop.name}</td>
-                                  <td style={{ padding: "8px 8px", color: "#6b7280" }}>{shop.owner_name || "—"}</td>
-                                  <td style={{ padding: "8px 8px", color: "#6b7280" }}>{shop.phone || "—"}</td>
-                                  <td style={{ padding: "8px 8px" }}>
+                                  <td style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                    {shop.name}
+                                  </td>
+                                  <td style={{ padding: "10px 12px", color: "#555" }}>
+                                    {shop.owner_name || "—"}
+                                  </td>
+                                  <td style={{ padding: "10px 12px", color: "#555" }}>
+                                    {shop.phone || "—"}
+                                  </td>
+                                  <td style={{ padding: "10px 12px" }}>
                                     {pending > 0 ? (
-                                      <span style={{ color: "#C8102E", fontWeight: 700 }}>₹{pending.toLocaleString()}</span>
+                                      <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#C8102E" }}>
+                                        ₹{pending.toLocaleString()}
+                                      </span>
                                     ) : (
                                       <span className="badge-green">Cleared</span>
                                     )}
@@ -134,7 +222,9 @@ export default function AppRoutes() {
                           </tbody>
                         </table>
                         {routeShops.length === 0 && (
-                          <p style={{ color: "#9ca3af", fontSize: "13px", padding: "8px" }}>No shops assigned to this route</p>
+                          <p style={{ color: "#888", fontSize: "15px", padding: "12px" }}>
+                            No shops assigned to this route
+                          </p>
                         )}
                       </td>
                     </tr>
@@ -144,33 +234,77 @@ export default function AppRoutes() {
             })}
           </tbody>
         </table>
+
         {routes.length === 0 && (
-          <p style={{ textAlign: "center", color: "#9ca3af", padding: "32px", fontSize: "14px" }}>No routes yet</p>
+          <div style={{ textAlign: "center", padding: "48px 24px" }}>
+            <p style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "1.2rem",
+              color: "#ccc",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em"
+            }}>
+              No routes yet
+            </p>
+          </div>
         )}
       </div>
 
+      {/* Modal */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-box">
-            <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, marginBottom: "16px" }}>
-              {editing ? "Edit Route" : "Add Route"}
-            </h2>
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Route Name</label>
-                <input className="input" style={{ marginTop: "4px" }} value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+          <div className="modal-box" style={{ maxWidth: "520px", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+              <h2 style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em"
+              }}>
+                {editing ? "Edit Route" : "Add Route"}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Route Name</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  required
+                />
               </div>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Driver Name</label>
-                <input className="input" style={{ marginTop: "4px" }} value={form.driver_name} onChange={e => setForm({...form, driver_name: e.target.value})} />
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Driver Name</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.driver_name}
+                  onChange={e => setForm({ ...form, driver_name: e.target.value })}
+                />
               </div>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Driver Phone</label>
-                <input className="input" style={{ marginTop: "4px" }} value={form.driver_phone} onChange={e => setForm({...form, driver_phone: e.target.value})} />
+
+              <div style={{ marginBottom: "24px" }}>
+                <label style={labelStyle}>Driver Phone</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.driver_phone}
+                  onChange={e => setForm({ ...form, driver_phone: e.target.value })}
+                />
               </div>
-              <div style={{ display: "flex", gap: "12px", paddingTop: "4px" }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Save</button>
-                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>Cancel</button>
+
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={loading}>
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

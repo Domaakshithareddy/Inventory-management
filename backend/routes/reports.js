@@ -259,29 +259,129 @@ const addExpensesSheet = async (sheet, expenses, freeProducts, breakages) => {
 };
 
 // ─── DASHBOARD ───────────────────────────────────────────
+// ─── DASHBOARD ───────────────────────────────────────────
 router.get('/dashboard', auth, async (req, res) => {
   const gid = req.user.godown_id;
+  const { range } = req.query; // 'today', '7days', '30days', 'all'
+
+  // Build date filter
+  let dateFilter;
+  if (range === '7days') dateFilter = `CURRENT_DATE - INTERVAL '7 days'`;
+  else if (range === '30days') dateFilter = `CURRENT_DATE - INTERVAL '30 days'`;
+  else if (range === 'all') dateFilter = `'1900-01-01'`;
+  else dateFilter = `CURRENT_DATE`; // default: today
+
   const gFilter = gid ? `WHERE godown_id = '${gid}'` : '';
-  const gAnd = gid ? `AND b.godown_id='${gid}'` : '';
+  const gAnd = gid ? `AND godown_id = '${gid}'` : '';
+  const gBillsAnd = gid ? `AND b.godown_id = '${gid}'` : '';
+  const gCsAnd = gid ? `AND cs.godown_id = '${gid}'` : '';
+  const gPuAnd = gid ? `AND p.godown_id = '${gid}'` : '';
 
-  const [stockVal, todaySales, todayCounter, totalExpenses, pendingBills, pendingPurchases] = await Promise.all([
-    pool.query(`SELECT COALESCE(SUM(stock_value),0) as total FROM inventory ${gFilter}`),
-    pool.query(`SELECT COALESCE(SUM(total_amount),0) as total FROM bills WHERE DATE(created_at)=CURRENT_DATE ${gAnd}`),
-    pool.query(`SELECT COALESCE(SUM(total_amount),0) as total FROM counter_sales WHERE DATE(created_at)=CURRENT_DATE ${gAnd}`),
-    pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses ${gFilter}`),
-    pool.query(`SELECT COALESCE(SUM(pending_amount),0) as total FROM bills WHERE status != 'CLEARED' ${gAnd}`),
-    pool.query(`SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount,0)),0) as total FROM purchases WHERE payment_status != 'PAID' ${gAnd}`)
-  ]);
+  try {
+    const [
+      stockVal,
+      shopSales,
+      counterSales,
+      totalExpenses,
+      pendingBills,
+      pendingPurchases,
+      purchases,
+      cashFlow
+    ] = await Promise.all([
+      // Stock value — no date filter, always current
+      pool.query(`SELECT COALESCE(SUM(stock_value), 0) as total FROM inventory ${gFilter}`),
 
-  res.json({
-    stock_value: stockVal.rows[0].total,
-    today_sales: parseFloat(todaySales.rows[0].total) + parseFloat(todayCounter.rows[0].total),
-    today_shop_sales: todaySales.rows[0].total,
-    today_counter_sales: todayCounter.rows[0].total,
-    total_expenses: totalExpenses.rows[0].total,
-    pending_bills: pendingBills.rows[0].total,
-    pending_purchases: pendingPurchases.rows[0].total
-  });
+      // Shop (bill) sales in range
+      pool.query(`
+        SELECT COALESCE(SUM(b.total_amount), 0) as total
+        FROM bills b
+        WHERE DATE(b.created_at) >= ${dateFilter} ${gBillsAnd}
+      `),
+
+      // Counter sales in range
+      pool.query(`
+        SELECT COALESCE(SUM(cs.total_amount), 0) as total
+        FROM counter_sales cs
+        WHERE DATE(cs.created_at) >= ${dateFilter} ${gCsAnd}
+      `),
+
+      // Expenses in range
+      pool.query(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM expenses
+        WHERE DATE(created_at) >= ${dateFilter} ${gAnd}
+      `),
+
+      // Pending bills — no date filter, always total outstanding
+      pool.query(`
+        SELECT COALESCE(SUM(pending_amount), 0) as total
+        FROM bills
+        WHERE status != 'CLEARED' ${gAnd}
+      `),
+
+      // Pending purchases — no date filter, always total outstanding
+      pool.query(`
+        SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) as total
+        FROM purchases
+        WHERE payment_status != 'PAID' ${gAnd}
+      `),
+
+      // Purchases total in range
+      pool.query(`
+        SELECT COALESCE(SUM(p.total_amount), 0) as total
+        FROM purchases p
+        WHERE DATE(p.purchase_date) >= ${dateFilter} ${gPuAnd}
+      `),
+
+      // Cash flow — deposits & withdrawals (all time, not date filtered)
+      gid ? pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN type = 'DEPOSIT' THEN amount ELSE 0 END), 0) as total_deposits,
+          COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL' THEN amount ELSE 0 END), 0) as total_withdrawals
+        FROM bank_transactions
+        WHERE godown_id = $1
+      `, [gid]) : pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN type = 'DEPOSIT' THEN amount ELSE 0 END), 0) as total_deposits,
+          COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL' THEN amount ELSE 0 END), 0) as total_withdrawals
+        FROM bank_transactions
+      `)
+    ]);
+
+    const counterTotal = parseFloat(counterSales.rows[0].total);
+    const shopTotal = parseFloat(shopSales.rows[0].total);
+
+    // Bills paid amount in range (for cash in hand calc)
+    const billsPaidRes = await pool.query(`
+      SELECT COALESCE(SUM(paid_amount), 0) as total
+      FROM bills
+      WHERE 1=1 ${gAnd}
+    `);
+
+    const totalDeposits = parseFloat(cashFlow.rows[0].total_deposits);
+    const totalWithdrawals = parseFloat(cashFlow.rows[0].total_withdrawals);
+    const allTimeCounterRes = await pool.query(`SELECT COALESCE(SUM(total_amount),0) as total FROM counter_sales WHERE 1=1 ${gAnd}`);
+    const allTimeCounter = parseFloat(allTimeCounterRes.rows[0].total);
+    const billsPaid = parseFloat(billsPaidRes.rows[0].total);
+
+    const cashInHand = (allTimeCounter + billsPaid) - totalDeposits + totalWithdrawals;
+    const cashInBank = totalDeposits - totalWithdrawals;
+
+    res.json({
+      stock_value: stockVal.rows[0].total,
+      total_sales: shopTotal + counterTotal,
+      shop_sales: shopSales.rows[0].total,
+      counter_sales: counterSales.rows[0].total,
+      purchases: purchases.rows[0].total,
+      total_expenses: totalExpenses.rows[0].total,
+      pending_bills: pendingBills.rows[0].total,
+      pending_purchases: pendingPurchases.rows[0].total,
+      cash_in_hand: cashInHand,
+      cash_in_bank: cashInBank
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/sales', auth, async (req, res) => {

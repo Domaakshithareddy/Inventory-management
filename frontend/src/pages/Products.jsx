@@ -10,6 +10,7 @@ export default function Products() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = () => {
     api.get("/products").then(r => setProducts(r.data));
@@ -22,10 +23,18 @@ export default function Products() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editing) await api.put(`/products/${editing}`, form);
-    else await api.post("/products", form);
-    setModal(false);
-    load();
+    if (loading) return;
+    setLoading(true);
+    try {
+      if (editing) await api.put(`/products/${editing}`, form);
+      else await api.post("/products", form);
+      setModal(false);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to save product");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -34,98 +43,242 @@ export default function Products() {
     load();
   };
 
+  const labelStyle = {
+    fontSize: "11px",
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 600
+  };
+
+  const actionBtn = (color) => ({
+    color,
+    fontSize: "15px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em"
+  });
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 className="section-title">Products</h1>
-        <button className="btn-primary" onClick={openAdd}>+ Add Product</button>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
+        <div>
+          <h1 className="section-title">Products</h1>
+          <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
+            All products • Manage catalog
+          </p>
+        </div>
+        <button className="btn-primary" onClick={openAdd}>
+          + Add Product
+        </button>
       </div>
 
+      {/* Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
             <tr>
               {["Name", "Category", "Size", "Bottles/Case", "Selling ₹/Case", "Selling ₹/Bottle", "Company", "Actions"].map(h => (
-                <th key={h}>{h}</th>
+                <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {products.map(p => (
               <tr key={p.id} className="table-row">
-                <td style={{ fontWeight: 500 }}>{p.name}</td>
-                <td><span className="badge-red">{p.category}</span></td>
-                <td>{p.size}</td>
-                <td>{p.bottles_per_case}</td>
-                <td style={{ fontWeight: 600 }}>₹{p.selling_price}</td>
-                <td style={{ fontWeight: 600, color: "#2563eb" }}>₹{p.selling_price_per_unit}</td>
-                <td style={{ color: "#9ca3af" }}>{p.company_name || "—"}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "12px" }}>
-                    <button onClick={() => openEdit(p)} style={{ color: "#C8102E", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>Edit</button>
-                    <button onClick={() => handleDelete(p.id)} style={{ color: "#9ca3af", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>Delete</button>
+                <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
+                  {p.name}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <span className="badge-red">{p.category}</span>
+                </td>
+                <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
+                  {p.size || "—"}
+                </td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", padding: "16px" }}>
+                  {p.bottles_per_case}
+                </td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", padding: "16px" }}>
+                  ₹{Number(p.selling_price).toLocaleString()}
+                </td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", color: "#2563eb", padding: "16px" }}>
+                  ₹{Number(p.selling_price_per_unit).toLocaleString()}
+                </td>
+                <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
+                  {p.company_name || "—"}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <button onClick={() => openEdit(p)} style={actionBtn("#C8102E")}>
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(p.id)} style={actionBtn("#aaaaaa")}>
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {products.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: "32px", fontSize: "14px" }}>No products yet</p>}
+
+        {products.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 24px" }}>
+            <p style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "1.2rem",
+              color: "#ccc",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em"
+            }}>
+              No products yet
+            </p>
+          </div>
+        )}
       </div>
 
+      {/* Modal */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-box">
-            <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, marginBottom: "16px" }}>
-              {editing ? "Edit Product" : "Add Product"}
-            </h2>
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Product Name</label>
-                <input className="input" style={{ marginTop: "4px" }} value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+          <div className="modal-box" style={{ maxWidth: "720px", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+              <h2 style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em"
+              }}>
+                {editing ? "Edit Product" : "Add Product"}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: "24px" }}>
+                <label style={labelStyle}>Product Name</label>
+                <input
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  required
+                />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "24px" }}>
                 <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Category</label>
-                    <select className="input" style={{ marginTop: "4px" }} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-                    {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                  <label style={labelStyle}>Category</label>
+                  <select
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.category}
+                    onChange={e => setForm({ ...form, category: e.target.value })}
+                  >
+                    {CATEGORIES.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Size</label>
-                    <input className="input" style={{ marginTop: "4px" }} value={form.size} onChange={e => setForm({...form, size: e.target.value})} placeholder="750ml" />
+                  <label style={labelStyle}>Size</label>
+                  <input
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.size}
+                    onChange={e => setForm({ ...form, size: e.target.value })}
+                    placeholder="750ml"
+                  />
                 </div>
                 <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Bottles per Case</label>
-                        <input type="number" className="input" style={{ marginTop: "4px" }} value={form.bottles_per_case} onChange={e => setForm({...form, bottles_per_case: e.target.value})} required />
-                </div>
-                <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Selling Price / Case ₹</label>
-                    <input type="number" className="input" style={{ marginTop: "4px" }} value={form.selling_price} onChange={e => setForm({...form, selling_price: e.target.value})} required />
-                </div>
-                <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Selling Price / Bottle ₹</label>
-                    <input type="number" className="input" style={{ marginTop: "4px" }} value={form.selling_price_per_unit} onChange={e => setForm({...form, selling_price_per_unit: e.target.value})} required />
-                </div>
-                <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Breakage Fee / Bottle ₹</label>
-                    <input type="number" className="input" style={{ marginTop: "4px" }} value={form.breakage_penalty} onChange={e => setForm({...form, breakage_penalty: e.target.value})} placeholder="3" />
-                </div>
-                <div>
-                    <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Company</label>
-                    <select className="input" style={{ marginTop: "4px" }} value={form.company_id} onChange={e => setForm({...form, company_id: e.target.value})}>
-                    <option value="">Select Company</option>
-                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                  <label style={labelStyle}>Bottles per Case</label>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.bottles_per_case}
+                    onChange={e => setForm({ ...form, bottles_per_case: e.target.value })}
+                    required
+                  />
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input type="checkbox" id="returnable" checked={form.is_returnable} onChange={e => setForm({...form, is_returnable: e.target.checked})} />
-                <label htmlFor="returnable" style={{ fontSize: "13px" }}>Returnable Bottles</label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "24px" }}>
+                <div>
+                  <label style={labelStyle}>Selling Price / Case ₹</label>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.selling_price}
+                    onChange={e => setForm({ ...form, selling_price: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Selling Price / Bottle ₹</label>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.selling_price_per_unit}
+                    onChange={e => setForm({ ...form, selling_price_per_unit: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Breakage Fee / Bottle ₹</label>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.breakage_penalty}
+                    onChange={e => setForm({ ...form, breakage_penalty: e.target.value })}
+                    placeholder="3"
+                  />
+                </div>
               </div>
-              <div style={{ display: "flex", gap: "12px", marginTop: "4px" }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Save</button>
-                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>Cancel</button>
+
+              <div style={{ marginBottom: "24px" }}>
+                <label style={labelStyle}>Company</label>
+                <select
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.company_id}
+                  onChange={e => setForm({ ...form, company_id: e.target.value })}
+                >
+                  <option value="">Select Company</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+                <input
+                  type="checkbox"
+                  id="returnable"
+                  checked={form.is_returnable}
+                  onChange={e => setForm({ ...form, is_returnable: e.target.checked })}
+                  style={{ accentColor: "#C8102E" }}
+                />
+                <label htmlFor="returnable" style={{ fontSize: "15px", color: "#444", fontWeight: 500 }}>
+                  Returnable Bottles
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={loading}>
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

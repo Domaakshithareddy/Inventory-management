@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const apicache = require('apicache');
 
 router.get('/', auth, async (req, res) => {
   let query = `SELECT * FROM routes`;
@@ -20,6 +21,7 @@ router.post('/', auth, async (req, res) => {
     `INSERT INTO routes (godown_id, name, driver_name) VALUES ($1,$2,$3) RETURNING *`,
     [godown_id, name, driver_name]
   );
+  apicache.clear();
   res.json(result.rows[0]);
 });
 
@@ -29,6 +31,7 @@ router.put('/:id', auth, async (req, res) => {
     `UPDATE routes SET name=$1, driver_name=$2 WHERE id=$3 RETURNING *`,
     [name, driver_name, req.params.id]
   );
+  apicache.clear();
   res.json(result.rows[0]);
 });
 

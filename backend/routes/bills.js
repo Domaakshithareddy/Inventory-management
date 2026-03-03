@@ -131,23 +131,80 @@ router.post('/', auth, async (req, res) => {
 });
 
 router.post('/:id/payment', auth, async (req, res) => {
+  const { paid_amount } = req.body;
   try {
-    const { paid_amount } = req.body;
     const bill = await pool.query(`SELECT * FROM bills WHERE id=$1`, [req.params.id]);
-    if (!bill.rows[0]) return res.status(404).json({ error: 'Not found' });
-
-    const b = bill.rows[0];
-    const new_paid = parseFloat(b.paid_amount || 0) + parseFloat(paid_amount);
-    const pending = Math.max(0, parseFloat(b.total_amount) - new_paid);
-    const status = pending <= 0 ? 'CLEARED' : 'PARTIAL';
+    if (!bill.rows[0]) return res.status(404).json({ error: 'Bill not found' });
+    
+    const total = parseFloat(bill.rows[0].total_amount);
+    const newPaid = Math.min(parseFloat(paid_amount), total);
+    const newPending = Math.max(0, total - newPaid);
+    const newStatus = newPaid >= total ? 'CLEARED' : newPaid > 0 ? 'PARTIAL' : 'PENDING';
 
     const result = await pool.query(
       `UPDATE bills SET paid_amount=$1, pending_amount=$2, status=$3 WHERE id=$4 RETURNING *`,
-      [new_paid, pending, status, req.params.id]
+      [newPaid, newPending, newStatus, req.params.id]
     );
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Get bill info
+    const bill = await client.query(`SELECT * FROM bills WHERE id=$1`, [req.params.id]);
+    if (!bill.rows[0]) return res.status(404).json({ error: 'Bill not found' });
+    const godown_id = bill.rows[0].godown_id;
+
+    // Get bill items
+    const items = await client.query(
+      `SELECT bi.*, p.bottles_per_case FROM bill_items bi
+       JOIN products p ON bi.product_id = p.id
+       WHERE bi.bill_id = $1`,
+      [req.params.id]
+    );
+
+    // Reverse inventory — add bottles back
+    for (const item of items.rows) {
+      const bpc = parseInt(item.bottles_per_case);
+      const bottlesToRestore = (parseInt(item.quantity_cases || 0) * bpc) + parseInt(item.quantity_units || 0);
+      const costToRestore = parseFloat(item.total_price || 0);
+
+      const inv = await client.query(
+        `SELECT quantity_cases, quantity_units FROM inventory WHERE godown_id=$1 AND product_id=$2`,
+        [godown_id, item.product_id]
+      );
+
+      if (inv.rows[0]) {
+        const currentBottles = (parseInt(inv.rows[0].quantity_cases) * bpc) + parseInt(inv.rows[0].quantity_units || 0);
+        const newTotal = currentBottles + bottlesToRestore;
+        const new_cases = Math.floor(newTotal / bpc);
+        const new_units = newTotal % bpc;
+
+        await client.query(
+          `UPDATE inventory SET quantity_cases=$1, quantity_units=$2, stock_value = stock_value + $3
+           WHERE godown_id=$4 AND product_id=$5`,
+          [new_cases, new_units, costToRestore, godown_id, item.product_id]
+        );
+      }
+    }
+
+    // Delete bill items then bill
+    await client.query(`DELETE FROM bill_items WHERE bill_id=$1`, [req.params.id]);
+    await client.query(`DELETE FROM bills WHERE id=$1`, [req.params.id]);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Bill deleted and inventory restored' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

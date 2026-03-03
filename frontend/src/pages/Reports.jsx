@@ -50,106 +50,264 @@ export default function Reports() {
   const totalPaid = sales.reduce((s, b) => s + parseFloat(b.paid_amount || 0), 0);
   const totalPending = sales.reduce((s, b) => s + parseFloat(b.pending_amount || 0), 0);
 
+  const labelStyle = {
+    fontSize: "11px",
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 600
+  };
+
   return (
     <div>
-      <h1 className="section-title" style={{ marginBottom: "24px" }}>Reports</h1>
-
-      {/* Date Range */}
-      <div className="card" style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "16px" }}>
-          <div>
-            <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>From Date</label>
-            <input type="date" className="input" value={from} onChange={e => setFrom(e.target.value)} />
-          </div>
-          <div>
-            <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>To Date</label>
-            <input type="date" className="input" value={to} onChange={e => setTo(e.target.value)} />
-          </div>
-          <button className="btn-primary" onClick={fetchSales}>View Sales Report</button>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
+        <h1 className="section-title">Reports</h1>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+          {/* No total here — kept in summary cards below */}
+          <button className="btn-primary" onClick={fetchSales}>
+            View Sales Report
+          </button>
         </div>
       </div>
 
-      {/* 6 Download Options */}
-      <div className="card" style={{ marginBottom: "24px" }}>
-        <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", marginBottom: "16px", fontWeight: 600 }}>
-          Download Excel Reports
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px" }}>
-          {DOWNLOAD_OPTIONS.map((opt, idx) => (
+      {/* Date Range */}
+      <div style={{
+        background: "#f8f8f8",
+        borderLeft: "4px solid #C8102E",
+        padding: "16px",
+        marginBottom: "24px",
+        borderRadius: "4px"
+      }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "16px" }}>
+          <div>
+            <label style={labelStyle}>From Date</label>
+            <input
+              type="date"
+              className="input"
+              style={{ marginTop: "6px" }}
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>To Date</label>
+            <input
+              type="date"
+              className="input"
+              style={{ marginTop: "6px" }}
+              value={to}
+              onChange={e => setTo(e.target.value)}
+            />
+          </div>
+          <button className="btn-primary" onClick={fetchSales} style={{ marginTop: "20px" }}>
+            View Sales Report
+          </button>
+        </div>
+      </div>
+
+      {/* Download Options */}
+      <div style={{
+        background: "#f8f8f8",
+        borderLeft: "4px solid #2563eb",
+        padding: "16px",
+        marginBottom: "24px",
+        borderRadius: "4px"
+      }}>
+        <p style={labelStyle}>Download Excel Reports</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginTop: "12px" }}>
+          {DOWNLOAD_OPTIONS.map((opt) => (
             <button
               key={opt.type}
               onClick={() => downloadExcel(opt.type)}
               disabled={downloading !== null}
               style={{
-                display: "flex", alignItems: "center", gap: "12px",
-                padding: "14px 16px", borderRadius: "10px", cursor: downloading ? "not-allowed" : "pointer",
-                border: `2px solid ${downloading === opt.type ? opt.color : '#e5e7eb'}`,
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                padding: "16px",
+                borderRadius: "12px",
+                cursor: downloading ? "not-allowed" : "pointer",
+                border: `2px solid ${downloading === opt.type ? opt.color : '#e2e8f0'}`,
                 background: downloading === opt.type ? opt.color : "white",
                 color: downloading === opt.type ? "white" : "#111",
                 opacity: downloading !== null && downloading !== opt.type ? 0.5 : 1,
-                transition: "all 0.15s", textAlign: "left"
-              }}>
-              <span style={{ fontSize: "20px" }}>{opt.icon}</span>
+                transition: "all 0.2s",
+                textAlign: "left",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>{opt.icon}</span>
               <div>
-                <div style={{ fontSize: "12px", fontWeight: 600 }}>
-                  {downloading === opt.type ? "Downloading..." : `${idx + 1}. ${opt.label}`}
+                <div style={{
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px"
+                }}>
+                  {downloading === opt.type ? "Downloading..." : opt.label}
                 </div>
-                <div style={{ fontSize: "10px", color: downloading === opt.type ? "rgba(255,255,255,0.7)" : "#9ca3af", marginTop: "2px" }}>
+                <div style={{ fontSize: "12px", color: downloading === opt.type ? "rgba(255,255,255,0.8)" : "#888", marginTop: "2px" }}>
                   {from} → {to}
                 </div>
               </div>
               {downloading !== opt.type && (
-                <span style={{ marginLeft: "auto", color: opt.color, fontWeight: 700 }}>⬇</span>
+                <span style={{ marginLeft: "auto", color: opt.color, fontSize: "20px", fontWeight: 700 }}>⬇</span>
               )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Sales Table */}
+      {/* Loaded Sales Report */}
       {loaded && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "24px" }}>
-            <div className="card">
-              <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", marginBottom: "6px" }}>Total Billed</p>
-              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700 }}>₹{total.toLocaleString()}</p>
-              <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px" }}>{sales.length} bills</p>
+          {/* Summary Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+            <div style={{
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}>
+              <p style={labelStyle}>Total Billed</p>
+              <p style={{
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 700,
+                color: "#111"
+              }}>
+                ₹{total.toLocaleString()}
+              </p>
+              <p style={{ fontSize: "13px", color: "#888", marginTop: "4px" }}>
+                {sales.length} bill{sales.length !== 1 ? "s" : ""}
+              </p>
             </div>
-            <div className="card">
-              <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", marginBottom: "6px" }}>Collected</p>
-              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, color: "#16a34a" }}>₹{totalPaid.toLocaleString()}</p>
+
+            <div style={{
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}>
+              <p style={labelStyle}>Collected</p>
+              <p style={{
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 700,
+                color: "#16a34a"
+              }}>
+                ₹{totalPaid.toLocaleString()}
+              </p>
             </div>
-            <div className="card">
-              <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase", marginBottom: "6px" }}>Pending</p>
-              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, color: "#C8102E" }}>₹{totalPending.toLocaleString()}</p>
+
+            <div style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}>
+              <p style={labelStyle}>Pending</p>
+              <p style={{
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                fontSize: "2rem",
+                fontWeight: 700,
+                color: "#C8102E"
+              }}>
+                ₹{totalPending.toLocaleString()}
+              </p>
             </div>
           </div>
 
+          {/* Sales Table */}
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
               <thead className="table-head">
                 <tr>
                   {["Bill #", "Date", "Shop", "Godown", "Total", "Paid", "Pending", "Status"].map(h => (
-                    <th key={h}>{h}</th>
+                    <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {sales.map(b => (
                   <tr key={b.id} className="table-row">
-                    <td style={{ fontWeight: 700, color: "#C8102E" }}>#{b.bill_number}</td>
-                    <td>{new Date(b.created_at).toLocaleDateString("en-IN")}</td>
-                    <td style={{ fontWeight: 500 }}>{b.shop_name}</td>
-                    <td style={{ color: "#9ca3af" }}>{b.godown_name}</td>
-                    <td style={{ fontWeight: 700 }}>₹{Number(b.total_amount).toLocaleString()}</td>
-                    <td style={{ color: "#16a34a" }}>₹{Number(b.paid_amount || 0).toLocaleString()}</td>
-                    <td style={{ color: "#C8102E", fontWeight: 600 }}>₹{Number(b.pending_amount || 0).toLocaleString()}</td>
-                    <td><span className={b.status === "CLEARED" ? "badge-green" : b.status === "PARTIAL" ? "badge-red" : "badge-gray"}>{b.status}</span></td>
+                    <td style={{
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "19px",
+                      color: "#C8102E",
+                      padding: "16px"
+                    }}>
+                      #{b.bill_number}
+                    </td>
+                    <td style={{ color: "#555", fontSize: "15px", padding: "16px" }}>
+                      {new Date(b.created_at).toLocaleDateString("en-IN")}
+                    </td>
+                    <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
+                      {b.shop_name}
+                    </td>
+                    <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
+                      {b.godown_name}
+                    </td>
+                    <td style={{
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "19px",
+                      padding: "16px"
+                    }}>
+                      ₹{Number(b.total_amount).toLocaleString()}
+                    </td>
+                    <td style={{
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "19px",
+                      color: "#16a34a",
+                      padding: "16px"
+                    }}>
+                      ₹{Number(b.paid_amount || 0).toLocaleString()}
+                    </td>
+                    <td style={{
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "19px",
+                      color: "#C8102E",
+                      padding: "16px"
+                    }}>
+                      ₹{Number(b.pending_amount || 0).toLocaleString()}
+                    </td>
+                    <td style={{ padding: "16px" }}>
+                      <span className={
+                        b.status === "CLEARED" ? "badge-green" :
+                        b.status === "PARTIAL" ? "badge-red" :
+                        "badge-gray"
+                      }>
+                        {b.status}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {sales.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: "32px", fontSize: "14px" }}>No sales in this period</p>}
+
+            {sales.length === 0 && (
+              <div style={{ textAlign: "center", padding: "48px 24px" }}>
+                <p style={{
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: "1.2rem",
+                  color: "#ccc",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em"
+                }}>
+                  No sales in this period
+                </p>
+              </div>
+            )}
           </div>
         </>
       )}

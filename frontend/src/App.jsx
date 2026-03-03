@@ -17,12 +17,13 @@ import FreeProducts from "./pages/FreeProducts";
 import Reports from "./pages/Reports";
 import CounterSales from "./pages/CounterSales";
 import Breakage from "./pages/Breakage";
+import CashFlow from "./pages/CashFlow";
 
 function Layout({ children }) {
   return (
     <div style={{ display: "flex" }}>
       <Sidebar />
-      <div style={{ marginLeft: "256px", flex: 1, minHeight: "100vh", background: "#F5F5F5" }}>
+      <div style={{ marginLeft: "220px", flex: 1, minHeight: "100vh", background: "white" }}>
         <Navbar />
         <main style={{ paddingTop: "56px", padding: "56px 24px 24px 24px" }}>{children}</main>
       </div>
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/counter-sales" element={<ProtectedRoute><Layout><CounterSales /></Layout></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Layout><Reports /></Layout></ProtectedRoute>} />
           <Route path="/breakage" element={<ProtectedRoute><Layout><Breakage /></Layout></ProtectedRoute>} />
+          <Route path="/cash-flow" element={<ProtectedRoute><Layout><CashFlow /></Layout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>

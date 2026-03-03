@@ -7,6 +7,7 @@ export default function Breakage() {
   const [breakages, setBreakages] = useState([]);
   const [products, setProducts] = useState([]);
   const [modal, setModal] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ product_id: "", quantity_bottles: "", reason: "", breakage_date: today });
 
   const load = () => api.get("/breakage").then(r => setBreakages(r.data));
@@ -20,140 +21,223 @@ export default function Breakage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await api.post("/breakage", form);
-    setModal(false);
-    setForm({ product_id: "", quantity_bottles: "", reason: "", breakage_date: today });
-    load();
+    if (loading) return;
+    setLoading(true);
+    try {
+      await api.post("/breakage", form);
+      setModal(false);
+      setForm({ product_id: "", quantity_bottles: "", reason: "", breakage_date: today });
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to save breakage");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
     if (!confirm("Delete this breakage record?")) return;
-    await api.delete(`/breakage/${id}`);
-    load();
+    try {
+      await api.delete(`/breakage/${id}`);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to delete");
+    }
   };
 
   const totalPenalty = breakages.reduce((s, b) => s + parseFloat(b.total_penalty || 0), 0);
 
+  const labelStyle = {
+    fontSize: "11px",
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 600
+  };
+
+  const actionBtn = (color) => ({
+    color,
+    fontSize: "15px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em"
+  });
+
+  const getReasonStyle = (reason) => {
+    if (reason?.includes("company")) {
+      return { background: "#fef3c7", color: "#92400e", padding: "4px 12px", borderRadius: "9999px", fontSize: "13px", fontWeight: 600 };
+    }
+    if (reason?.includes("godown")) {
+      return { background: "#fee2e2", color: "#991b1b", padding: "4px 12px", borderRadius: "9999px", fontSize: "13px", fontWeight: 600 };
+    }
+    return { background: "#ede9fe", color: "#5b21b6", padding: "4px 12px", borderRadius: "9999px", fontSize: "13px", fontWeight: 600 };
+  };
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
         <div>
           <h1 className="section-title">Breakage</h1>
-          <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px" }}>Track broken bottles and penalties</p>
+          <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
+            Track broken bottles and penalties
+          </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
           {breakages.length > 0 && (
             <div style={{ textAlign: "right" }}>
-              <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Total Penalty</p>
-              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.5rem", fontWeight: 700, color: "#C8102E" }}>
+              <p style={labelStyle}>Total Penalty</p>
+              <p style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "1.8rem", fontWeight: 700, color: "#C8102E" }}>
                 ₹{totalPenalty.toLocaleString()}
               </p>
             </div>
           )}
-          <button className="btn-primary" onClick={() => setModal(true)}>+ Add Breakage</button>
+          <button className="btn-primary" onClick={() => setModal(true)}>
+            + Add Breakage
+          </button>
         </div>
       </div>
 
+      {/* Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
             <tr>
               {["Date", "Product", "Godown", "Bottles Broken", "Penalty/Bottle", "Total Penalty", "Reason", "Actions"].map(h => (
-                <th key={h}>{h}</th>
+                <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {breakages.map(b => (
               <tr key={b.id} className="table-row">
-                <td>{new Date(b.breakage_date).toLocaleDateString("en-IN")}</td>
-                <td style={{ fontWeight: 500 }}>{b.product_name}</td>
-                <td style={{ color: "#9ca3af" }}>{b.godown_name}</td>
-                <td><span className="badge-red">{b.quantity_bottles} bottles</span></td>
-                <td>₹{b.penalty_per_bottle}</td>
-                <td style={{ fontWeight: 700, color: "#C8102E" }}>₹{Number(b.total_penalty).toLocaleString()}</td>
-                <td>
-                    <span style={{
-                    fontSize: "11px", padding: "3px 8px", borderRadius: "4px", fontWeight: 500,
-                    background: b.reason?.includes("company") ? "#fef3c7" : b.reason?.includes("godown") ? "#fee2e2" : "#ede9fe",
-                    color: b.reason?.includes("company") ? "#92400e" : b.reason?.includes("godown") ? "#991b1b" : "#5b21b6"
-                    }}>
-                    {b.reason || "—"}
-                    </span>
+                <td style={{ color: "#555", fontSize: "15px", padding: "16px" }}>
+                  {new Date(b.breakage_date).toLocaleDateString("en-IN")}
                 </td>
-                <td>
-                  <button onClick={() => handleDelete(b.id)}
-                    style={{ color: "#9ca3af", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>
-                    Delete
-                  </button>
+                <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>{b.product_name}</td>
+                <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>{b.godown_name}</td>
+                <td style={{ padding: "16px" }}>
+                  <span className="badge-red">{b.quantity_bottles} bottles</span>
+                </td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", padding: "16px" }}>
+                  ₹{b.penalty_per_bottle}
+                </td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", color: "#C8102E", padding: "16px" }}>
+                  ₹{Number(b.total_penalty).toLocaleString()}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <span style={getReasonStyle(b.reason)}>{b.reason || "—"}</span>
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <button onClick={() => handleDelete(b.id)} style={actionBtn("#aaaaaa")}>Delete</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         {breakages.length === 0 && (
-          <p style={{ textAlign: "center", color: "#9ca3af", padding: "32px", fontSize: "14px" }}>No breakage records</p>
+          <div style={{ textAlign: "center", padding: "48px 24px" }}>
+            <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.2rem", color: "#ccc", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              No breakage records
+            </p>
+          </div>
         )}
       </div>
 
+      {/* Modal */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-box" style={{ maxWidth: "440px" }}>
-            <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, marginBottom: "16px" }}>Add Breakage</h2>
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Product</label>
-                <select className="input" style={{ marginTop: "4px" }} value={form.product_id}
-                  onChange={e => setForm({ ...form, product_id: e.target.value })} required>
+          <div className="modal-box" style={{ maxWidth: "520px", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+              <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "2rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                Add Breakage
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Product</label>
+                <select
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.product_id}
+                  onChange={e => setForm({ ...form, product_id: e.target.value })}
+                  required
+                >
                   <option value="">Select Product</option>
                   {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 {selectedProduct && (
-                  <p style={{ fontSize: "11px", color: "#9ca3af", marginTop: "3px" }}>
+                  <p style={{ fontSize: "13px", color: "#888", marginTop: "6px" }}>
                     Penalty: ₹{selectedProduct.breakage_penalty}/bottle
                   </p>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
                 <div>
-                  <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Bottles Broken</label>
-                  <input type="number" className="input" style={{ marginTop: "4px" }}
+                  <label style={labelStyle}>Bottles Broken</label>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ marginTop: "6px" }}
                     value={form.quantity_bottles}
                     onChange={e => setForm({ ...form, quantity_bottles: e.target.value })}
-                    required min="1" />
+                    required
+                    min="1"
+                  />
                 </div>
                 <div>
-                  <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Date</label>
-                  <input type="date" className="input" style={{ marginTop: "4px" }}
+                  <label style={labelStyle}>Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    style={{ marginTop: "6px" }}
                     value={form.breakage_date}
-                    onChange={e => setForm({ ...form, breakage_date: e.target.value })} />
+                    onChange={e => setForm({ ...form, breakage_date: e.target.value })}
+                  />
                 </div>
               </div>
-              <div>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Breakage Location</label>
-                <select className="input" style={{ marginTop: "4px" }}
-                    value={form.reason}
-                    onChange={e => setForm({ ...form, reason: e.target.value })}
-                    required>
-                <option value="">Select Location</option>
-                <option value="Breakage while purchasing from company">While purchasing from company</option>
-                <option value="Breakage in godown / while loading">In godown / while loading</option>
-                <option value="Breakage at shop / reseller">At shop / reseller</option>
-                    </select>
+
+              <div style={{ marginBottom: "24px" }}>
+                <label style={labelStyle}>Breakage Location</label>
+                <select
+                  className="input"
+                  style={{ marginTop: "6px" }}
+                  value={form.reason}
+                  onChange={e => setForm({ ...form, reason: e.target.value })}
+                  required
+                >
+                  <option value="">Select Location</option>
+                  <option value="Breakage while purchasing from company">While purchasing from company</option>
+                  <option value="Breakage in godown / while loading">In godown / while loading</option>
+                  <option value="Breakage at shop / reseller">At shop / reseller</option>
+                </select>
               </div>
+
               {estimatedPenalty > 0 && (
-                <div style={{ background: "#fff5f5", border: "1px solid #fee2e2", borderRadius: "8px", padding: "10px 12px" }}>
-                  <p style={{ fontSize: "13px", color: "#C8102E", fontWeight: 700 }}>
+                <div style={{ background: "#fff5f5", borderLeft: "4px solid #C8102E", padding: "12px", marginBottom: "20px", borderRadius: "4px" }}>
+                  <p style={{ fontSize: "15px", color: "#C8102E", fontWeight: 700 }}>
                     Penalty: ₹{estimatedPenalty.toLocaleString()}
-                    <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: "8px" }}>
-                      ({form.quantity_bottles} × ₹{selectedProduct?.breakage_penalty})
-                    </span>
+                  </p>
+                  <p style={{ fontSize: "13px", color: "#888", marginTop: "4px" }}>
+                    ({form.quantity_bottles} × ₹{selectedProduct?.breakage_penalty})
                   </p>
                 </div>
               )}
+
               <div style={{ display: "flex", gap: "12px" }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Save</button>
-                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={loading}>
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const apicache = require('apicache');
 
 router.get('/', auth, async (req, res) => {
   const result = await pool.query(`SELECT * FROM companies ORDER BY name`);
@@ -13,6 +14,7 @@ router.post('/', auth, async (req, res) => {
     `INSERT INTO companies (name, phone, address) VALUES ($1,$2,$3) RETURNING *`,
     [name, phone, address]
   );
+  apicache.clear();
   res.json(result.rows[0]);
 });
 
@@ -22,11 +24,13 @@ router.put('/:id', auth, async (req, res) => {
     `UPDATE companies SET name=$1, phone=$2, address=$3 WHERE id=$4 RETURNING *`,
     [name, phone, address, req.params.id]
   );
+  apicache.clear();
   res.json(result.rows[0]);
 });
 
 router.delete('/:id', auth, async (req, res) => {
   await pool.query(`DELETE FROM companies WHERE id=$1`, [req.params.id]);
+  apicache.clear();
   res.json({ message: 'Deleted' });
 });
 

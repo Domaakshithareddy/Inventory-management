@@ -12,16 +12,43 @@ const emptyItem = {
   total_price: 0
 };
 
+const labelStyle = {
+  fontSize: "11px",
+  color: "#888",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  fontFamily: "'Barlow Condensed', sans-serif",
+  fontWeight: 600
+};
+
+const actionBtn = (color) => ({
+  color,
+  fontSize: "15px",
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontFamily: "'Barlow Condensed', sans-serif",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em"
+});
+
 export default function Bills() {
   const [bills, setBills] = useState([]);
   const [shops, setShops] = useState([]);
   const [products, setProducts] = useState([]);
   const [modal, setModal] = useState(false);
-  const [payModal, setPayModal] = useState(null);
-  const [payAmount, setPayAmount] = useState("");
+  const [editModal, setEditModal] = useState(null);
+  const [editPaid, setEditPaid] = useState("");
   const [error, setError] = useState("");
   const [selectedBills, setSelectedBills] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
   const { user } = useAuth();
+
+  // New: date range states
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [form, setForm] = useState({
     shop_id: "",
@@ -29,12 +56,45 @@ export default function Bills() {
     items: [{ ...emptyItem }]
   });
 
-  const load = () => api.get("/bills").then(r => setBills(r.data));
+  const load = async () => {
+    const res = await api.get("/bills");
+    let filtered = res.data;
+
+    // Client-side date range filter
+    if (startDate) {
+      const start = new Date(startDate).setHours(0, 0, 0, 0);
+      filtered = filtered.filter(b => new Date(b.created_at).getTime() >= start);
+    }
+    if (endDate) {
+      const end = new Date(endDate).setHours(23, 59, 59, 999);
+      filtered = filtered.filter(b => new Date(b.created_at).getTime() <= end);
+    }
+
+    setBills(filtered);
+  };
+
   useEffect(() => {
-    load();
-    api.get("/shops").then(r => setShops(r.data));
-    api.get("/products").then(r => setProducts(r.data));
+    const fetchInitialData = async () => {
+      await load();
+      const shopsRes = await api.get("/shops");
+      setShops(shopsRes.data);
+      const productsRes = await api.get("/products");
+      setProducts(productsRes.data);
+    };
+    fetchInitialData();
   }, []);
+
+  // Apply date filter
+  const applyFilter = () => {
+    load();
+  };
+
+  // Clear filter → show all
+  const clearFilter = () => {
+    setStartDate("");
+    setEndDate("");
+    load();
+  };
 
   const toggleSelect = (id) => {
     setSelectedBills(prev =>
@@ -43,58 +103,39 @@ export default function Bills() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedBills.length === bills.length) {
-      setSelectedBills([]);
-    } else {
-      setSelectedBills(bills.map(b => b.id));
-    }
+    if (selectedBills.length === bills.length) setSelectedBills([]);
+    else setSelectedBills(bills.map(b => b.id));
   };
 
   const printLoadSheet = async () => {
     if (selectedBills.length === 0) return;
-
     const allItemsData = await Promise.all(
-        selectedBills.map(async (billId) => {
+      selectedBills.map(async (billId) => {
         const res = await api.get(`/bills/${billId}/items`);
         return res.data;
-        })
+      })
     );
-
-  // Combine quantities by product name
     const productMap = {};
-  allItemsData.flat().forEach(item => {
-    if (!productMap[item.product_name]) {
-      productMap[item.product_name] = {
-        cases: 0, bottles: 0, bpc: item.bottles_per_case || 24,
-        pricePerCase: parseFloat(item.price_per_case || 0),
-        pricePerUnit: parseFloat(item.price_per_unit || 0)
-      };
-    }
-    productMap[item.product_name].cases += parseInt(item.quantity_cases || 0);
-    productMap[item.product_name].bottles += parseInt(item.quantity_units || 0);
-  });
-
-  Object.keys(productMap).forEach(name => {
-    const p = productMap[name];
-    const total = (p.cases * p.bpc) + p.bottles;
-    p.totalCases = Math.floor(total / p.bpc);
-    p.extraBottles = total % p.bpc;
-  });
-
-  // Normalize extra bottles into cases
-    Object.keys(productMap).forEach(name => {
-        const p = productMap[name];
-        const total = (p.cases * p.bpc) + p.bottles;
-        p.totalCases = Math.floor(total / p.bpc);
-        p.extraBottles = total % p.bpc;
+    allItemsData.flat().forEach(item => {
+      if (!productMap[item.product_name]) {
+        productMap[item.product_name] = {
+          cases: 0, bottles: 0, bpc: item.bottles_per_case || 24,
+          pricePerCase: parseFloat(item.price_per_case || 0),
+          pricePerUnit: parseFloat(item.price_per_unit || 0)
+        };
+      }
+      productMap[item.product_name].cases += parseInt(item.quantity_cases || 0);
+      productMap[item.product_name].bottles += parseInt(item.quantity_units || 0);
     });
-
-  const printWindow = window.open('', '_blank');
-  printWindow.document.write(`
-    <html>
-    <head>
-      <title>Load Sheet</title>
-      <style>
+    Object.keys(productMap).forEach(name => {
+      const p = productMap[name];
+      const total = (p.cases * p.bpc) + p.bottles;
+      p.totalCases = Math.floor(total / p.bpc);
+      p.extraBottles = total % p.bpc;
+    });
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html><head><title>Load Sheet</title><style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Courier New', monospace; font-size: 14px; padding: 20px; max-width: 320px; margin: auto; }
         .title { font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 4px; }
@@ -103,55 +144,34 @@ export default function Bills() {
         table { width: 100%; border-collapse: collapse; }
         th { text-align: left; border-bottom: 2px solid #000; padding: 5px 4px; font-size: 12px; text-transform: uppercase; }
         td { padding: 8px 4px; border-bottom: 1px dotted #ccc; font-size: 14px; }
-        .product { font-weight: bold; }
         .qty { text-align: center; font-size: 16px; font-weight: bold; }
         @media print { body { padding: 5px; } }
-      </style>
-    </head>
-    <body>
+      </style></head><body>
       <div class="title">LOAD SHEET</div>
       <div class="center">${new Date().toLocaleDateString('en-IN')} | ${selectedBills.length} bills</div>
       <div class="line"></div>
-      <table>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th style="text-align:center">Cases</th>
-            <th style="text-align:center">Bottles</th>
-            <th style="text-align:right">Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${Object.entries(productMap).map(([name, qty]) => {
-            const value = (qty.totalCases * qty.pricePerCase) + (qty.extraBottles * qty.pricePerUnit);
-            return `
-              <tr>
-                <td class="product">${name}</td>
-                <td class="qty">${qty.totalCases}</td>
-                <td class="qty">${qty.extraBottles}</td>
-                <td style="text-align:right; font-weight:bold">₹${value.toLocaleString()}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
+      <table><thead><tr>
+        <th>Product</th><th style="text-align:center">Cases</th><th style="text-align:center">Bottles</th><th style="text-align:right">Value</th>
+      </tr></thead><tbody>
+        ${Object.entries(productMap).map(([name, qty]) => {
+          const value = (qty.totalCases * qty.pricePerCase) + (qty.extraBottles * qty.pricePerUnit);
+          return `<tr><td style="font-weight:bold">${name}</td><td class="qty">${qty.totalCases}</td><td class="qty">${qty.extraBottles}</td><td style="text-align:right;font-weight:bold">₹${value.toLocaleString()}</td></tr>`;
+        }).join('')}
+      </tbody></table>
       <div class="line"></div>
-      <div style="display:flex; justify-content:space-between; font-size:16px; font-weight:bold; padding: 4px 0;">
+      <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold;padding:4px 0;">
         <span>TOTAL VALUE</span>
-        <span>₹${Object.values(productMap).reduce((s, qty) => {
-          return s + (qty.totalCases * qty.pricePerCase) + (qty.extraBottles * qty.pricePerUnit);
-        }, 0).toLocaleString()}</span>
+        <span>₹${Object.values(productMap).reduce((s, qty) => s + (qty.totalCases * qty.pricePerCase) + (qty.extraBottles * qty.pricePerUnit), 0).toLocaleString()}</span>
       </div>
       <div class="line"></div>
       <div class="center">Total Bills: ${selectedBills.length}</div>
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
-  printWindow.close();
-};
+      </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
 
   const updateItem = (i, field, value) => {
     const items = [...form.items];
@@ -164,11 +184,9 @@ export default function Bills() {
         items[i].bottles_per_case = parseInt(p.bottles_per_case) || 24;
       }
     }
-    const cases = parseFloat(items[i].quantity_cases || 0);
-    const units = parseFloat(items[i].quantity_units || 0);
-    const ppc = parseFloat(items[i].price_per_case || 0);
-    const ppu = parseFloat(items[i].price_per_unit || 0);
-    items[i].total_price = (cases * ppc) + (units * ppu);
+    items[i].total_price =
+      (parseFloat(items[i].quantity_cases || 0) * parseFloat(items[i].price_per_case || 0)) +
+      (parseFloat(items[i].quantity_units || 0) * parseFloat(items[i].price_per_unit || 0));
     setForm({ ...form, items });
   };
 
@@ -178,6 +196,7 @@ export default function Bills() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setError("");
     for (const item of form.items) {
       if (!item.product_id) { setError("Please select a product for all items"); return; }
@@ -185,6 +204,7 @@ export default function Bills() {
         setError("Please enter quantity for all items"); return;
       }
     }
+    setLoading(true);
     try {
       await api.post("/bills", {
         shop_id: form.shop_id,
@@ -204,14 +224,35 @@ export default function Bills() {
       load();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to generate bill");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePay = async () => {
-    await api.post(`/bills/${payModal}/payment`, { paid_amount: parseFloat(payAmount) });
-    setPayModal(null);
-    setPayAmount("");
-    load();
+  const handleEdit = async () => {
+    if (editLoading) return;
+    setEditLoading(true);
+    try {
+      await api.post(`/bills/${editModal}/payment`, { paid_amount: parseFloat(editPaid || 0) });
+      setEditModal(null);
+      setEditPaid("");
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update payment");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Delete this bill? Inventory will be restored.")) return;
+    try {
+      await api.delete(`/bills/${id}`);
+      setSelectedBills(prev => prev.filter(b => b !== id));
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to delete bill");
+    }
   };
 
   const printBill = async (bill) => {
@@ -219,56 +260,42 @@ export default function Bills() {
     const items = itemsRes.data;
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
-      <html>
-      <head>
-        <title>Bill #${bill.bill_number}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Courier New', monospace; font-size: 13px; padding: 20px; max-width: 300px; margin: auto; }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .line { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; margin: 4px 0; }
-          .title { font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 4px; }
-          .small { font-size: 11px; color: #555; }
-          table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-          th { text-align: left; font-size: 11px; border-bottom: 1px solid #000; padding: 3px 0; }
-          td { padding: 3px 0; font-size: 12px; }
-          .total-row { font-weight: bold; font-size: 14px; }
-          .status { text-align: center; font-size: 12px; margin-top: 8px; }
-          @media print { body { padding: 0; } }
-        </style>
-      </head>
-      <body>
-        <div class="title">INVENTORY</div>
-        <div class="center small">${bill.godown_name}</div>
-        <div class="line"></div>
-        <div class="row"><span>Bill #:</span><span class="bold">${bill.bill_number}</span></div>
-        <div class="row"><span>Date:</span><span>${new Date(bill.created_at).toLocaleDateString('en-IN')}</span></div>
-        <div class="row"><span>Shop:</span><span class="bold">${bill.shop_name}</span></div>
-        <div class="line"></div>
-        <table>
-          <thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Amt</th></tr></thead>
-          <tbody>
-            ${items.map(item => `
-              <tr>
-                <td>${item.product_name}</td>
-                <td>${item.quantity_cases > 0 ? item.quantity_cases + 'C' : ''}${item.quantity_units > 0 ? ' ' + item.quantity_units + 'B' : ''}</td>
-                <td>₹${item.quantity_cases > 0 ? item.price_per_case : item.price_per_unit}</td>
-                <td>₹${Number(item.total_price).toLocaleString()}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="line"></div>
-        <div class="row total-row"><span>TOTAL</span><span>₹${Number(bill.total_amount).toLocaleString()}</span></div>
-        <div class="row"><span>Paid</span><span>₹${Number(bill.paid_amount || 0).toLocaleString()}</span></div>
-        <div class="row bold"><span>Pending</span><span>₹${Number(bill.pending_amount || 0).toLocaleString()}</span></div>
-        <div class="line"></div>
-        <div class="status">Status: ${bill.status}</div>
-        <div class="center small" style="margin-top: 12px;">Thank you!</div>
-      </body>
-      </html>
+      <html><head><title>Bill #${bill.bill_number}</title><style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; font-size: 13px; padding: 20px; max-width: 300px; margin: auto; }
+        .center { text-align: center; } .bold { font-weight: bold; }
+        .line { border-top: 1px dashed #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; margin: 4px 0; }
+        .title { font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 4px; }
+        .small { font-size: 11px; color: #555; }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+        th { text-align: left; font-size: 11px; border-bottom: 1px solid #000; padding: 3px 0; }
+        td { padding: 3px 0; font-size: 12px; }
+        .total-row { font-weight: bold; font-size: 14px; }
+        @media print { body { padding: 0; } }
+      </style></head><body>
+      <div class="title">INVENTORY</div>
+      <div class="center small">${bill.godown_name}</div>
+      <div class="line"></div>
+      <div class="row"><span>Bill #:</span><span class="bold">${bill.bill_number}</span></div>
+      <div class="row"><span>Date:</span><span>${new Date(bill.created_at).toLocaleDateString('en-IN')}</span></div>
+      <div class="row"><span>Shop:</span><span class="bold">${bill.shop_name}</span></div>
+      <div class="line"></div>
+      <table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Amt</th></tr></thead><tbody>
+        ${items.map(item => `<tr>
+          <td>${item.product_name}</td>
+          <td>${item.quantity_cases > 0 ? item.quantity_cases + 'C' : ''}${item.quantity_units > 0 ? ' ' + item.quantity_units + 'B' : ''}</td>
+          <td>₹${item.quantity_cases > 0 ? item.price_per_case : item.price_per_unit}</td>
+          <td>₹${Number(item.total_price).toLocaleString()}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      <div class="line"></div>
+      <div class="row total-row"><span>TOTAL</span><span>₹${Number(bill.total_amount).toLocaleString()}</span></div>
+      <div class="row"><span>Paid</span><span>₹${Number(bill.paid_amount || 0).toLocaleString()}</span></div>
+      <div class="row bold"><span>Pending</span><span>₹${Number(bill.pending_amount || 0).toLocaleString()}</span></div>
+      <div class="line"></div>
+      <div class="center small" style="margin-top:12px;">Thank you!</div>
+      </body></html>
     `);
     printWindow.document.close();
     printWindow.focus();
@@ -281,15 +308,19 @@ export default function Bills() {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 className="section-title">Bills</h1>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
+        <div>
+          <h1 className="section-title">Bills</h1>
+          {selectedBills.length > 0 && (
+            <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
+              {selectedBills.length} bill{selectedBills.length > 1 ? "s" : ""} selected for load sheet
+            </p>
+          )}
+        </div>
         <div style={{ display: "flex", gap: "12px" }}>
           {selectedBills.length > 0 && (
-            <button onClick={printLoadSheet} style={{
-              background: "#111", color: "white", border: "none", borderRadius: "8px",
-              padding: "8px 16px", fontSize: "13px", cursor: "pointer", fontWeight: 600
-            }}>
-              🚚 Print Load Sheet ({selectedBills.length} bills)
+            <button onClick={printLoadSheet} className="btn-secondary">
+              Print Load Sheet ({selectedBills.length})
             </button>
           )}
           {user?.role !== "admin" && (
@@ -304,13 +335,47 @@ export default function Bills() {
         </div>
       </div>
 
-      {/* Selection hint */}
-      {selectedBills.length > 0 && (
-        <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "8px", padding: "10px 14px", marginBottom: "12px", fontSize: "13px", color: "#0369a1" }}>
-          ✅ {selectedBills.length} bill{selectedBills.length > 1 ? 's' : ''} selected — Click "Print Load Sheet" to get combined product quantities for truck loading
+      {/* Date Range Filter */}
+      <div style={{
+        background: "#f8f8f8",
+        borderLeft: "4px solid #C8102E",
+        padding: "16px",
+        marginBottom: "24px",
+        borderRadius: "4px"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+          <div>
+            <label style={{ fontSize: "11px", color: "#888", textTransform: "uppercase" }}>Start Date</label>
+            <input
+              type="date"
+              className="input"
+              style={{ marginTop: "6px" }}
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", color: "#888", textTransform: "uppercase" }}>End Date</label>
+            <input
+              type="date"
+              className="input"
+              style={{ marginTop: "6px" }}
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button className="btn-primary" onClick={applyFilter} style={{ marginTop: "20px" }}>
+              Apply Filter
+            </button>
+            <button className="btn-outline" onClick={clearFilter} style={{ marginTop: "20px" }}>
+              Clear
+            </button>
+          </div>
         </div>
-      )}
+      </div>
 
+      {/* Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
@@ -319,6 +384,7 @@ export default function Bills() {
                 <input type="checkbox"
                   checked={selectedBills.length === bills.length && bills.length > 0}
                   onChange={toggleSelectAll}
+                  style={{ accentColor: "#C8102E" }}
                 />
               </th>
               {["Bill #", "Date", "Shop", "Godown", "Total", "Paid", "Pending", "Status", "Actions"].map(h => (
@@ -329,73 +395,73 @@ export default function Bills() {
           <tbody>
             {bills.map(b => (
               <tr key={b.id} className="table-row"
-                style={{ background: selectedBills.includes(b.id) ? "#fff7ed" : "" }}>
+                style={{ background: selectedBills.includes(b.id) ? "#fff8f8" : "" }}>
                 <td style={{ textAlign: "center" }}>
                   <input type="checkbox"
                     checked={selectedBills.includes(b.id)}
                     onChange={() => toggleSelect(b.id)}
+                    style={{ accentColor: "#C8102E" }}
                   />
                 </td>
-                <td style={{ fontWeight: 700, color: "#C8102E" }}>#{b.bill_number}</td>
-                <td>{new Date(b.created_at).toLocaleDateString("en-IN")}</td>
-                <td style={{ fontWeight: 500 }}>{b.shop_name}</td>
-                <td style={{ color: "#9ca3af" }}>{b.godown_name}</td>
-                <td style={{ fontWeight: 700 }}>₹{Number(b.total_amount).toLocaleString()}</td>
-                <td style={{ color: "#16a34a" }}>₹{Number(b.paid_amount || 0).toLocaleString()}</td>
-                <td style={{ color: "#C8102E", fontWeight: 600 }}>₹{Number(b.pending_amount || 0).toLocaleString()}</td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "20px", color: "#C8102E" }}>#{b.bill_number}</td>
+                <td style={{ color: "#555", fontSize: "15px" }}>{new Date(b.created_at).toLocaleDateString("en-IN")}</td>
+                <td style={{ fontWeight: 600, fontSize: "16px" }}>{b.shop_name}</td>
+                <td style={{ color: "#888", fontSize: "15px" }}>{b.godown_name}</td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "20px" }}>₹{Number(b.total_amount).toLocaleString()}</td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", color: "#16a34a" }}>₹{Number(b.paid_amount || 0).toLocaleString()}</td>
+                <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "19px", color: "#C8102E" }}>₹{Number(b.pending_amount || 0).toLocaleString()}</td>
                 <td><span className={statusColor(b.status)}>{b.status}</span></td>
                 <td>
-                  <div style={{ display: "flex", gap: "12px" }}>
-                    <button onClick={() => printBill(b)}
-                      style={{ color: "#2563eb", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>
-                      🖨️ Print
-                    </button>
-                    {b.status !== "CLEARED" && (
-                      <button onClick={() => { setPayModal(b.id); setPayAmount(""); }}
-                        style={{ color: "#C8102E", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>
-                        Collect
-                      </button>
-                    )}
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <button onClick={() => printBill(b)} style={actionBtn("#2563eb")}>Print</button>
+                    <button onClick={() => { setEditModal(b.id); setEditPaid(b.paid_amount || ""); }} style={actionBtn("#C8102E")}>Edit</button>
+                    <button onClick={() => handleDelete(b.id)} style={actionBtn("#aaaaaa")}>Delete</button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {bills.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: "32px", fontSize: "14px" }}>No bills yet</p>}
+        {bills.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 24px" }}>
+            <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.2rem", color: "#ccc", textTransform: "uppercase", letterSpacing: "0.1em" }}>No bills yet</p>
+          </div>
+        )}
       </div>
 
-      {/* New Bill Modal */}
+      {/* New Bill Modal - unchanged */}
       {modal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: "720px", maxHeight: "90vh", overflowY: "auto" }}>
-            <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, marginBottom: "16px" }}>New Bill</h2>
+            <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+              <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "2rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>New Bill</h2>
+            </div>
             {error && (
-              <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#C8102E", padding: "10px 12px", borderRadius: "6px", fontSize: "13px", marginBottom: "12px" }}>
+              <div style={{ background: "#111", borderLeft: "4px solid #C8102E", color: "white", padding: "12px 16px", fontSize: "13px", marginBottom: "16px", fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em" }}>
                 {error}
               </div>
             )}
             <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Shop</label>
-                <select className="input" style={{ marginTop: "4px" }} value={form.shop_id}
+              <div style={{ marginBottom: "20px" }}>
+                <label style={labelStyle}>Shop</label>
+                <select className="input" style={{ marginTop: "6px" }} value={form.shop_id}
                   onChange={e => setForm({ ...form, shop_id: e.target.value })} required>
                   <option value="">Select Shop</option>
                   {shops.map(s => <option key={s.id} value={s.id}>{s.name} — {s.owner_name}</option>)}
                 </select>
               </div>
-              <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "12px", marginBottom: "12px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <p style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Products</p>
+              <div style={{ borderTop: "2px solid #f0f0f0", paddingTop: "16px", marginBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <label style={labelStyle}>Products</label>
                   <button type="button" onClick={addItem}
-                    style={{ color: "#C8102E", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}>
+                    style={{ color: "#C8102E", fontSize: "12px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     + Add Product
                   </button>
                 </div>
                 {form.items.map((item, i) => {
                   const selectedProduct = products.find(p => p.id === item.product_id);
                   return (
-                    <div key={i} style={{ background: "#f9fafb", borderRadius: "8px", padding: "10px", marginBottom: "10px", border: "1px solid #f3f4f6" }}>
+                    <div key={i} style={{ background: "#f8f8f8", borderLeft: "3px solid #e0e0e0", padding: "12px", marginBottom: "10px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", alignItems: "center" }}>
                         <select className="input" style={{ flex: 1, marginRight: "8px" }}
                           value={item.product_id}
@@ -405,29 +471,27 @@ export default function Bills() {
                         </select>
                         {form.items.length > 1 && (
                           <button type="button" onClick={() => removeItem(i)}
-                            style={{ color: "#9ca3af", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+                            style={{ color: "#aaa", background: "none", border: "none", cursor: "pointer", fontSize: "16px" }}>✕</button>
                         )}
                       </div>
                       {selectedProduct && (
-                        <p style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "8px" }}>
+                        <p style={{ fontSize: "11px", color: "#aaa", marginBottom: "10px", fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em" }}>
                           ₹{selectedProduct.selling_price}/case &nbsp;|&nbsp; ₹{selectedProduct.selling_price_per_unit}/bottle &nbsp;|&nbsp; {selectedProduct.bottles_per_case} bottles/case
                         </p>
                       )}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", alignItems: "center" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", alignItems: "end" }}>
                         <div>
-                          <label style={{ fontSize: "10px", color: "#9ca3af", textTransform: "uppercase" }}>Cases</label>
-                          <input type="number" className="input" style={{ marginTop: "2px" }}
-                            value={item.quantity_cases} onChange={e => updateItem(i, "quantity_cases", e.target.value)}
-                            min="0" placeholder="0" />
+                          <label style={labelStyle}>Cases</label>
+                          <input type="number" className="input" style={{ marginTop: "4px" }}
+                            value={item.quantity_cases} onChange={e => updateItem(i, "quantity_cases", e.target.value)} min="0" placeholder="0" />
                         </div>
                         <div>
-                          <label style={{ fontSize: "10px", color: "#9ca3af", textTransform: "uppercase" }}>Extra Bottles</label>
-                          <input type="number" className="input" style={{ marginTop: "2px" }}
-                            value={item.quantity_units} onChange={e => updateItem(i, "quantity_units", e.target.value)}
-                            min="0" placeholder="0" />
+                          <label style={labelStyle}>Extra Bottles</label>
+                          <input type="number" className="input" style={{ marginTop: "4px" }}
+                            value={item.quantity_units} onChange={e => updateItem(i, "quantity_units", e.target.value)} min="0" placeholder="0" />
                         </div>
-                        <div style={{ textAlign: "right", paddingTop: "16px" }}>
-                          <span style={{ fontWeight: 700, fontSize: "15px", color: "#111" }}>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: "1.4rem", color: "#111" }}>
                             ₹{parseFloat(item.total_price || 0).toLocaleString()}
                           </span>
                         </div>
@@ -435,23 +499,23 @@ export default function Bills() {
                     </div>
                   );
                 })}
-                <div style={{ textAlign: "right", fontWeight: 700, fontSize: "15px", marginTop: "4px" }}>
+                <div style={{ textAlign: "right", fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: "1.3rem", marginTop: "8px", borderTop: "2px solid #111", paddingTop: "8px" }}>
                   Total: ₹{grandTotal.toLocaleString()}
                 </div>
               </div>
-              <div style={{ background: "#fff5f5", border: "1px solid #fee2e2", borderRadius: "8px", padding: "12px", marginBottom: "16px" }}>
-                <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Amount Paid Now (0 if pending)</label>
-                <input type="number" className="input" style={{ marginTop: "4px" }}
+              <div style={{ background: "#f8f8f8", borderLeft: "4px solid #C8102E", padding: "16px", marginBottom: "20px" }}>
+                <label style={labelStyle}>Amount Paid Now (0 if pending)</label>
+                <input type="number" className="input" style={{ marginTop: "6px" }}
                   value={form.paid_amount} onChange={e => setForm({ ...form, paid_amount: e.target.value })}
                   placeholder="0" min="0" />
                 {parseFloat(form.paid_amount) > 0 && (
-                  <p style={{ fontSize: "12px", color: "#C8102E", marginTop: "4px" }}>
+                  <p style={{ fontSize: "12px", color: "#C8102E", marginTop: "6px", fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>
                     Pending: ₹{Math.max(0, grandTotal - parseFloat(form.paid_amount || 0)).toLocaleString()}
                   </p>
                 )}
               </div>
               <div style={{ display: "flex", gap: "12px" }}>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>Generate Bill</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Saving..." : "Generate Bill"}</button>
                 <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setModal(false)}>Cancel</button>
               </div>
             </form>
@@ -459,42 +523,74 @@ export default function Bills() {
         </div>
       )}
 
-      {/* Collect Payment Modal */}
-      {payModal && (
-        <div className="modal-overlay">
-          <div className="modal-box" style={{ maxWidth: "360px" }}>
-            <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "1.8rem", fontWeight: 700, marginBottom: "16px" }}>Collect Payment</h2>
-            {(() => {
-              const b = bills.find(b => b.id === payModal);
-              return (
-                <div>
-                  <div style={{ background: "#f9fafb", borderRadius: "8px", padding: "12px", marginBottom: "16px", fontSize: "13px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ color: "#9ca3af" }}>Total</span>
-                      <span style={{ fontWeight: 600 }}>₹{Number(b.total_amount).toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ color: "#9ca3af" }}>Already Paid</span>
-                      <span style={{ color: "#16a34a", fontWeight: 600 }}>₹{Number(b.paid_amount || 0).toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#9ca3af" }}>Pending</span>
-                      <span style={{ color: "#C8102E", fontWeight: 600 }}>₹{Number(b.pending_amount || 0).toLocaleString()}</span>
-                    </div>
+      {/* Edit Payment Modal - unchanged */}
+      {editModal && (() => {
+        const b = bills.find(b => b.id === editModal);
+        if (!b) return null;
+        const newPending = Math.max(0, parseFloat(b.total_amount) - parseFloat(editPaid || 0));
+        const newStatus = parseFloat(editPaid || 0) >= parseFloat(b.total_amount) ? "CLEARED"
+          : parseFloat(editPaid || 0) > 0 ? "PARTIAL" : "PENDING";
+        return (
+          <div className="modal-overlay">
+            <div className="modal-box" style={{ maxWidth: "400px" }}>
+              <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
+                <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: "2rem", fontWeight: 800, textTransform: "uppercase" }}>Edit Payment</h2>
+                <p style={{ fontSize: "13px", color: "#888", marginTop: "4px" }}>
+                  Bill #{b.bill_number} — {b.shop_name}
+                </p>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+                  <span style={labelStyle}>Bill Total</span>
+                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "1.3rem" }}>₹{Number(b.total_amount).toLocaleString()}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+                  <span style={labelStyle}>Currently Paid</span>
+                  <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: "1.3rem", color: "#16a34a" }}>₹{Number(b.paid_amount || 0).toLocaleString()}</span>
+                </div>
+              </div>
+
+              <label style={labelStyle}>Set Total Paid Amount</label>
+              <input
+                type="number"
+                className="input"
+                style={{ marginTop: "6px", marginBottom: "16px", fontSize: "18px", fontWeight: 700 }}
+                value={editPaid}
+                onChange={e => setEditPaid(e.target.value)}
+                placeholder="0"
+                min="0"
+                autoFocus
+              />
+
+              {editPaid !== "" && (
+                <div style={{ background: "#f8f8f8", borderLeft: "4px solid #111", padding: "14px", marginBottom: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <span style={labelStyle}>Pending after save</span>
+                    <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, color: newPending > 0 ? "#C8102E" : "#16a34a" }}>
+                      ₹{newPending.toLocaleString()}
+                    </span>
                   </div>
-                  <label style={{ fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" }}>Amount Collecting ₹</label>
-                  <input type="number" className="input" style={{ marginTop: "4px", marginBottom: "16px" }}
-                    value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder="Enter amount" />
-                  <div style={{ display: "flex", gap: "12px" }}>
-                    <button onClick={handlePay} className="btn-primary" style={{ flex: 1 }}>Confirm</button>
-                    <button onClick={() => setPayModal(null)} className="btn-outline" style={{ flex: 1 }}>Cancel</button>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={labelStyle}>New Status</span>
+                    <span style={{
+                      fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: "13px",
+                      padding: "4px 12px",
+                      background: newStatus === "CLEARED" ? "#16a34a" : newStatus === "PARTIAL" ? "#C8102E" : "#e8e8e8",
+                      color: newStatus === "PENDING" ? "#444" : "white"
+                    }}>{newStatus}</span>
                   </div>
                 </div>
-              );
-            })()}
+              )}
+
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button onClick={handleEdit} className="btn-primary" style={{ flex: 1 }} disabled={editLoading}>{editLoading ? "Saving..." : "Save"}</button>
+                <button onClick={() => { setEditModal(null); setEditPaid(""); }} className="btn-outline" style={{ flex: 1 }}>Cancel</button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
