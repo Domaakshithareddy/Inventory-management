@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../api/axios";
 
 const empty = { name: "", owner_name: "", phone: "", route_id: "" };
@@ -108,7 +108,7 @@ export default function Shops() {
               const isExpanded = expandedShop === s.id;
 
               return (
-                <>
+                <React.Fragment key={s.id}>
                   <tr key={s.id} className="table-row"
                     style={{ background: stats.totalPending > 0 ? "#fff8f8" : "" }}>
                     <td style={{ padding: "16px" }}>
@@ -242,7 +242,7 @@ export default function Shops() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>

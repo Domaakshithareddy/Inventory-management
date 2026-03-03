@@ -23,10 +23,10 @@ const cache = apicache ? apicache.middleware : (d, req, res, next) => next();
 // ── Routes — static/slow-changing data gets cached
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/godowns', require('./routes/godowns'));
-app.use('/api/products', cache('5 minutes'), require('./routes/products'));
-app.use('/api/companies', cache('5 minutes'), require('./routes/companies'));
-app.use('/api/shops', cache('2 minutes'), require('./routes/shops'));
-app.use('/api/routes', cache('2 minutes'), require('./routes/routes'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/companies', require('./routes/companies'));
+app.use('/api/shops', require('./routes/shops'));
+app.use('/api/routes', require('./routes/routes'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/purchases', require('./routes/purchases'));
 app.use('/api/bills', require('./routes/bills'));

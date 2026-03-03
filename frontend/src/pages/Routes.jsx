@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../api/axios";
 
 const empty = { name: "", driver_name: "", driver_phone: "" };
@@ -14,9 +14,9 @@ export default function AppRoutes() {
   const [loading, setLoading] = useState(false);
 
   const load = () => {
-    api.get("/routes").then(r => setRoutes(r.data));
-    api.get("/shops").then(r => setShops(r.data));
-    api.get("/bills").then(r => setBills(r.data));
+    api.get("/routes").then(r => setRoutes(Array.isArray(r.data) ? r.data : []));
+    api.get("/shops").then(r => setShops(Array.isArray(r.data) ? r.data : []));
+    api.get("/bills").then(r => setBills(Array.isArray(r.data) ? r.data : []));
   };
   useEffect(() => { load(); }, []);
 
@@ -105,7 +105,7 @@ export default function AppRoutes() {
               const totalPending = routeShops.reduce((s, shop) => s + getShopPending(shop.id), 0);
 
               return (
-                <>
+                <React.Fragment key={r.id}>
                   <tr key={r.id} className="table-row">
                     <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
                       {r.name}
@@ -229,7 +229,7 @@ export default function AppRoutes() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
