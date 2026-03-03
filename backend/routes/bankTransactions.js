@@ -2,54 +2,79 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+const VALID_TYPES = ['DEPOSIT', 'WITHDRAWAL', 'BORROW_CASH', 'BORROW_BANK', 'RETURN_CASH', 'RETURN_BANK'];
+
 // GET ALL transactions + computed cash summary
 router.get('/', auth, async (req, res) => {
-  const { role, godown_id } = req.user;
+  const { godown_id } = req.user;
 
   try {
-    // All bank transactions for this godown
     const txResult = await pool.query(
       `SELECT * FROM bank_transactions WHERE godown_id = $1 ORDER BY transaction_date DESC, created_at DESC`,
       [godown_id]
     );
 
-    // Counter sales total for this godown
     const csResult = await pool.query(
       `SELECT COALESCE(SUM(total_amount), 0) as total FROM counter_sales WHERE godown_id = $1`,
       [godown_id]
     );
 
-    // Bills paid amount for this godown
     const billsResult = await pool.query(
       `SELECT COALESCE(SUM(paid_amount), 0) as total FROM bills WHERE godown_id = $1`,
       [godown_id]
     );
 
-    // Bank totals
-    const depositsResult = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM bank_transactions WHERE godown_id = $1 AND type = 'DEPOSIT'`,
-      [godown_id]
-    );
-    const withdrawalsResult = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM bank_transactions WHERE godown_id = $1 AND type = 'WITHDRAWAL'`,
-      [godown_id]
-    );
+    const txRows = txResult.rows;
+
+    const sum = (type) => txRows
+      .filter(t => t.type === type)
+      .reduce((s, t) => s + parseFloat(t.amount), 0);
+
+    const totalDeposits    = sum('DEPOSIT');
+    const totalWithdrawals = sum('WITHDRAWAL');
+    const totalBorrowCash  = sum('BORROW_CASH');
+    const totalBorrowBank  = sum('BORROW_BANK');
+    const totalReturnCash  = sum('RETURN_CASH');
+    const totalReturnBank  = sum('RETURN_BANK');
 
     const counterSalesTotal = parseFloat(csResult.rows[0].total);
-    const billsPaidTotal = parseFloat(billsResult.rows[0].total);
-    const totalDeposits = parseFloat(depositsResult.rows[0].total);
-    const totalWithdrawals = parseFloat(withdrawalsResult.rows[0].total);
+    const billsPaidTotal    = parseFloat(billsResult.rows[0].total);
 
-    const cashInHand = (counterSalesTotal + billsPaidTotal) - totalDeposits + totalWithdrawals;
-    const cashInBank = totalDeposits - totalWithdrawals;
+    // Cash in hand:
+    //   + counter sales
+    //   + bills collected
+    //   - deposited to bank
+    //   - borrowed from cash (lent out, so cash decreases)
+    //   + returned to cash (got it back, so cash increases)
+    const cashInHand =
+      counterSalesTotal +
+      billsPaidTotal -
+      totalDeposits -
+      totalBorrowCash +
+      totalReturnCash;
+
+    // Cash in bank:
+    //   + deposits from cash
+    //   - bank withdrawals (expenses)
+    //   - borrowed from bank (lent out, so bank decreases)
+    //   + returned to bank (got it back, so bank increases)
+    const cashInBank =
+      totalDeposits -
+      totalWithdrawals -
+      totalBorrowBank +
+      totalReturnBank;
 
     res.json({
-      transactions: txResult.rows,
+      transactions: txRows,
       summary: {
         counter_sales_total: counterSalesTotal,
         bills_paid_total: billsPaidTotal,
         total_deposits: totalDeposits,
         total_withdrawals: totalWithdrawals,
+        total_borrow_cash: totalBorrowCash,
+        total_borrow_bank: totalBorrowBank,
+        total_return_cash: totalReturnCash,
+        total_return_bank: totalReturnBank,
         cash_in_hand: cashInHand,
         cash_in_bank: cashInBank
       }
@@ -59,15 +84,15 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST - Add deposit or withdrawal
+// POST
 router.post('/', auth, async (req, res) => {
   if (req.user.role === 'admin') return res.status(403).json({ error: 'Admins cannot add transactions' });
 
   const { type, amount, notes, transaction_date } = req.body;
   const godown_id = req.user.godown_id;
 
-  if (!['DEPOSIT', 'WITHDRAWAL'].includes(type)) {
-    return res.status(400).json({ error: 'Type must be DEPOSIT or WITHDRAWAL' });
+  if (!VALID_TYPES.includes(type)) {
+    return res.status(400).json({ error: 'Invalid transaction type' });
   }
   if (!amount || parseFloat(amount) <= 0) {
     return res.status(400).json({ error: 'Amount must be greater than 0' });
@@ -85,15 +110,15 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PUT - Edit a transaction
+// PUT
 router.put('/:id', auth, async (req, res) => {
   if (req.user.role === 'admin') return res.status(403).json({ error: 'Admins cannot edit transactions' });
 
   const { type, amount, notes, transaction_date } = req.body;
   const godown_id = req.user.godown_id;
 
-  if (!['DEPOSIT', 'WITHDRAWAL'].includes(type)) {
-    return res.status(400).json({ error: 'Type must be DEPOSIT or WITHDRAWAL' });
+  if (!VALID_TYPES.includes(type)) {
+    return res.status(400).json({ error: 'Invalid transaction type' });
   }
   if (!amount || parseFloat(amount) <= 0) {
     return res.status(400).json({ error: 'Amount must be greater than 0' });

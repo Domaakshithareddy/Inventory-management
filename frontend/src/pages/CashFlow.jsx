@@ -5,6 +5,45 @@ import { useAuth } from "../context/AuthContext";
 const today = new Date().toISOString().split("T")[0];
 const emptyForm = { type: "DEPOSIT", amount: "", notes: "", transaction_date: today };
 
+const TYPE_CONFIG = {
+  DEPOSIT: {
+    label: "Deposit to Bank",
+    badge: "↑ Deposit to Bank",
+    color: "#15803d",
+    bg: "#dcfce7"
+  },
+  WITHDRAWAL: {
+    label: "Bank Withdrawal",
+    badge: "↓ Bank Withdrawal",
+    color: "#991b1b",
+    bg: "#fee2e2"
+  },
+  BORROW_CASH: {
+    label: "Borrowed from Cash",
+    badge: "Borrowed from Cash",
+    color: "#92400e",
+    bg: "#fef9c3"
+  },
+  RETURN_CASH: {
+    label: "Returned to Cash",
+    badge: "Returned to Cash",
+    color: "#5b21b6",
+    bg: "#ede9fe"
+  },
+  BORROW_BANK: {
+    label: "Borrowed from Bank",
+    badge: "Borrowed from Bank",
+    color: "#92400e",
+    bg: "#fef9c3"
+  },
+  RETURN_BANK: {
+    label: "Returned to Bank",
+    badge: "Returned to Bank",
+    color: "#5b21b6",
+    bg: "#ede9fe"
+  }
+};
+
 export default function CashFlow() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -15,6 +54,10 @@ export default function CashFlow() {
     bills_paid_total: 0,
     total_deposits: 0,
     total_withdrawals: 0,
+    total_borrow_cash: 0,
+    total_borrow_bank: 0,
+    total_return_cash: 0,
+    total_return_bank: 0,
     cash_in_hand: 0,
     cash_in_bank: 0
   });
@@ -27,13 +70,13 @@ export default function CashFlow() {
   const load = async () => {
     const res = await api.get("/bank-transactions");
     setSummary(res.data.summary);
-    setTransactions(res.data.transactions);
+    setTransactions(Array.isArray(res.data.transactions) ? res.data.transactions : []);
   };
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = (defaultType = "DEPOSIT") => {
-    setForm({ ...emptyForm, type: defaultType });
+  const openAdd = (type = "DEPOSIT") => {
+    setForm({ ...emptyForm, type });
     setEditing(null);
     setModal(true);
   };
@@ -98,9 +141,39 @@ export default function CashFlow() {
     letterSpacing: "0.06em"
   });
 
+  const cardBtn = (bg, border, color) => ({
+    flex: 1,
+    padding: "7px 10px",
+    background: bg,
+    border: `1px solid ${border}`,
+    borderRadius: "6px",
+    color,
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em"
+  });
+
+  const cfg = TYPE_CONFIG[form.type] || TYPE_CONFIG.DEPOSIT;
+
+  const previewText = () => {
+    const amt = `₹${Number(form.amount).toLocaleString()}`;
+    switch (form.type) {
+      case "DEPOSIT":     return `${amt} moves from Cash → Bank`;
+      case "WITHDRAWAL":  return `${amt} deducted from Bank only`;
+      case "BORROW_CASH": return `${amt} lent out — Cash in hand decreases`;
+      case "RETURN_CASH": return `${amt} returned — Cash in hand increases`;
+      case "BORROW_BANK": return `${amt} lent out — Bank balance decreases`;
+      case "RETURN_BANK": return `${amt} returned — Bank balance increases`;
+      default: return "";
+    }
+  };
+
   return (
     <div>
-      {/* Header */}
+      {/* Header — original style */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px", marginTop: "20px" }}>
         <div>
           <h1 className="section-title">Cash Flow</h1>
@@ -127,6 +200,7 @@ export default function CashFlow() {
 
       {/* Summary Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "32px" }}>
+
         {/* Cash in Hand */}
         <div className="card" style={{ padding: "24px" }}>
           <p style={labelStyle}>💵 Value in Cash</p>
@@ -134,30 +208,23 @@ export default function CashFlow() {
             ₹{Number(summary.cash_in_hand).toLocaleString()}
           </p>
           <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "13px", color: "#888" }}>Counter Sales</span>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px" }}>
-                ₹{Number(summary.counter_sales_total).toLocaleString()}
-              </span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "13px", color: "#888" }}>Bills Collected</span>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px" }}>
-                ₹{Number(summary.bills_paid_total).toLocaleString()}
-              </span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "13px", color: "#888" }}>Deposited to Bank</span>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#C8102E" }}>
-                − ₹{Number(summary.total_deposits).toLocaleString()}
-              </span>
-            </div>
-            {summary.total_withdrawals > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "13px", color: "#888" }}>Withdrawn from Bank</span>
-                <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#16a34a" }}>
-                  + ₹{Number(summary.total_withdrawals).toLocaleString()}
-                </span>
+            <SummaryRow label="Counter Sales" value={`₹${Number(summary.counter_sales_total).toLocaleString()}`} />
+            <SummaryRow label="Bills Collected" value={`₹${Number(summary.bills_paid_total).toLocaleString()}`} />
+            <SummaryRow label="Deposited to Bank" value={`− ₹${Number(summary.total_deposits).toLocaleString()}`} color="#C8102E" />
+            {summary.total_borrow_cash > 0 && (
+              <SummaryRow label="Borrowed from Cash" value={`− ₹${Number(summary.total_borrow_cash).toLocaleString()}`} color="#92400e" />
+            )}
+            {summary.total_return_cash > 0 && (
+              <SummaryRow label="Returned to Cash" value={`+ ₹${Number(summary.total_return_cash).toLocaleString()}`} color="#16a34a" />
+            )}
+            {canEdit && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px", paddingTop: "12px", borderTop: "1px solid #f0f0f0" }}>
+                <button style={cardBtn("#fef9c3", "#fbbf24", "#92400e")} onClick={() => openAdd("BORROW_CASH")}>
+                  Borrow Cash
+                </button>
+                <button style={cardBtn("#ede9fe", "#c4b5fd", "#5b21b6")} onClick={() => openAdd("RETURN_CASH")}>
+                  Return Cash
+                </button>
               </div>
             )}
           </div>
@@ -170,18 +237,24 @@ export default function CashFlow() {
             ₹{Number(summary.cash_in_bank).toLocaleString()}
           </p>
           <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "13px", color: "#888" }}>Total Deposited</span>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#16a34a" }}>
-                ₹{Number(summary.total_deposits).toLocaleString()}
-              </span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "13px", color: "#888" }}>Total Withdrawn</span>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#C8102E" }}>
-                − ₹{Number(summary.total_withdrawals).toLocaleString()}
-              </span>
-            </div>
+            <SummaryRow label="Total Deposited" value={`₹${Number(summary.total_deposits).toLocaleString()}`} color="#16a34a" />
+            <SummaryRow label="Total Withdrawn" value={`− ₹${Number(summary.total_withdrawals).toLocaleString()}`} color="#C8102E" />
+            {summary.total_borrow_bank > 0 && (
+              <SummaryRow label="Borrowed from Bank" value={`− ₹${Number(summary.total_borrow_bank).toLocaleString()}`} color="#92400e" />
+            )}
+            {summary.total_return_bank > 0 && (
+              <SummaryRow label="Returned to Bank" value={`+ ₹${Number(summary.total_return_bank).toLocaleString()}`} color="#16a34a" />
+            )}
+            {canEdit && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px", paddingTop: "12px", borderTop: "1px solid #f0f0f0" }}>
+                <button style={cardBtn("#fef9c3", "#fbbf24", "#92400e")} onClick={() => openAdd("BORROW_BANK")}>
+                  Borrow Bank
+                </button>
+                <button style={cardBtn("#ede9fe", "#c4b5fd", "#5b21b6")} onClick={() => openAdd("RETURN_BANK")}>
+                  Return Bank
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -200,45 +273,49 @@ export default function CashFlow() {
             </tr>
           </thead>
           <tbody>
-            {transactions.map(tx => (
-              <tr key={tx.id} className="table-row">
-                <td style={{ color: "#555", fontSize: "15px", padding: "16px" }}>
-                  {new Date(tx.transaction_date).toLocaleDateString("en-IN")}
-                </td>
-                <td style={{ padding: "16px" }}>
-                  <span style={{
-                    padding: "4px 12px",
-                    borderRadius: "9999px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    background: tx.type === "DEPOSIT" ? "#dcfce7" : "#fee2e2",
-                    color: tx.type === "DEPOSIT" ? "#15803d" : "#991b1b"
+            {transactions.map(tx => {
+              const tcfg = TYPE_CONFIG[tx.type] || TYPE_CONFIG.DEPOSIT;
+              return (
+                <tr key={tx.id} className="table-row">
+                  <td style={{ color: "#555", fontSize: "15px", padding: "16px" }}>
+                    {new Date(tx.transaction_date).toLocaleDateString("en-IN")}
+                  </td>
+                  <td style={{ padding: "16px" }}>
+                    <span style={{
+                      padding: "4px 12px",
+                      borderRadius: "9999px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      background: tcfg.bg,
+                      color: tcfg.color,
+                      whiteSpace: "nowrap"
+                    }}>
+                      {tcfg.badge}
+                    </span>
+                  </td>
+                  <td style={{
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "19px",
+                    color: tcfg.color,
+                    padding: "16px"
                   }}>
-                    {tx.type === "DEPOSIT" ? "↑ Deposit" : "↓ Withdrawal"}
-                  </span>
-                </td>
-                <td style={{
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "19px",
-                  color: tx.type === "DEPOSIT" ? "#16a34a" : "#C8102E",
-                  padding: "16px"
-                }}>
-                  {tx.type === "DEPOSIT" ? "+" : "−"} ₹{Number(tx.amount).toLocaleString()}
-                </td>
-                <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
-                  {tx.notes || "—"}
-                </td>
-                <td style={{ padding: "16px" }}>
-                  {canEdit && (
-                    <div style={{ display: "flex", gap: "16px" }}>
-                      <button onClick={() => openEdit(tx)} style={actionBtn("#C8102E")}>Edit</button>
-                      <button onClick={() => handleDelete(tx.id)} style={actionBtn("#aaaaaa")}>Delete</button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    ₹{Number(tx.amount).toLocaleString()}
+                  </td>
+                  <td style={{ color: "#888", fontSize: "15px", padding: "16px" }}>
+                    {tx.notes || "—"}
+                  </td>
+                  <td style={{ padding: "16px" }}>
+                    {canEdit && (
+                      <div style={{ display: "flex", gap: "16px" }}>
+                        <button onClick={() => openEdit(tx)} style={actionBtn("#C8102E")}>Edit</button>
+                        <button onClick={() => handleDelete(tx.id)} style={actionBtn("#aaaaaa")}>Delete</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -269,23 +346,29 @@ export default function CashFlow() {
                 textTransform: "uppercase",
                 letterSpacing: "0.04em"
               }}>
-                {editing ? "Edit Transaction" : form.type === "DEPOSIT" ? "Deposit to Bank" : "Bank Withdrawal"}
+                {editing ? "Edit Transaction" : cfg.label}
               </h2>
             </div>
 
             <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: "20px" }}>
-                <label style={labelStyle}>Transaction Type</label>
-                <select
-                  className="input"
-                  style={{ marginTop: "6px" }}
-                  value={form.type}
-                  onChange={e => setForm({ ...form, type: e.target.value })}
-                >
-                  <option value="DEPOSIT">Deposit to Bank</option>
-                  <option value="WITHDRAWAL">Bank Withdrawal</option>
-                </select>
-              </div>
+              {editing && (
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={labelStyle}>Transaction Type</label>
+                  <select
+                    className="input"
+                    style={{ marginTop: "6px" }}
+                    value={form.type}
+                    onChange={e => setForm({ ...form, type: e.target.value })}
+                  >
+                    <option value="DEPOSIT">↑ Deposit to Bank</option>
+                    <option value="WITHDRAWAL">↓ Bank Withdrawal</option>
+                    <option value="BORROW_CASH">Borrowed from Cash</option>
+                    <option value="RETURN_CASH">Returned to Cash</option>
+                    <option value="BORROW_BANK">Borrowed from Bank</option>
+                    <option value="RETURN_BANK">Returned to Bank</option>
+                  </select>
+                </div>
+              )}
 
               <div style={{ marginBottom: "20px" }}>
                 <label style={labelStyle}>Amount ₹</label>
@@ -323,19 +406,16 @@ export default function CashFlow() {
                 />
               </div>
 
-              {/* Preview */}
               {form.amount > 0 && (
                 <div style={{
-                  background: form.type === "DEPOSIT" ? "#f0fdf4" : "#fff5f5",
-                  borderLeft: `4px solid ${form.type === "DEPOSIT" ? "#16a34a" : "#C8102E"}`,
+                  background: cfg.bg,
+                  borderLeft: `4px solid ${cfg.color}`,
                   padding: "12px",
                   marginBottom: "20px",
                   borderRadius: "4px"
                 }}>
-                  <p style={{ fontSize: "15px", fontWeight: 700, color: form.type === "DEPOSIT" ? "#16a34a" : "#C8102E" }}>
-                    {form.type === "DEPOSIT"
-                      ? `₹${Number(form.amount).toLocaleString()} will move from Cash → Bank`
-                      : `₹${Number(form.amount).toLocaleString()} will move from Bank → Cash`}
+                  <p style={{ fontSize: "15px", fontWeight: 700, color: cfg.color, margin: 0 }}>
+                    {previewText()}
                   </p>
                 </div>
               )}
@@ -352,6 +432,17 @@ export default function CashFlow() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, color = "#111" }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <span style={{ fontSize: "13px", color: "#888" }}>{label}</span>
+      <span style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: "14px", color }}>
+        {value}
+      </span>
     </div>
   );
 }
