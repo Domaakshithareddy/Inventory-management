@@ -4,7 +4,16 @@ const auth = require('../middleware/auth');
 const apicache = require('apicache');
 
 router.get('/', auth, async (req, res) => {
-  const result = await pool.query(`SELECT * FROM companies ORDER BY name`);
+  const result = await pool.query(`
+    SELECT c.*, 
+      COALESCE(c.outstanding_balance, 0) as outstanding_balance,
+      COUNT(pu.id) as total_purchases,
+      COALESCE(SUM(pu.total_amount), 0) as total_purchased
+    FROM companies c
+    LEFT JOIN purchases pu ON pu.company_id = c.id
+    GROUP BY c.id
+    ORDER BY c.name
+  `);
   res.json(result.rows);
 });
 

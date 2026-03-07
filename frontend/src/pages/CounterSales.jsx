@@ -13,7 +13,6 @@ const emptyItem = {
 export default function CounterSales() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const canEdit = !isAdmin;
 
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
@@ -23,6 +22,9 @@ export default function CounterSales() {
   const [editItem, setEditItem] = useState({ ...emptyItem });
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
+  const [godowns, setGodowns] = useState([]);
+  const [selectedGodown, setSelectedGodown] = useState("");
+  const [newGodown, setNewGodown] = useState("");
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -39,6 +41,9 @@ export default function CounterSales() {
       const end = new Date(endDate).setHours(23, 59, 59, 999);
       filtered = filtered.filter(s => new Date(s.created_at).getTime() <= end);
     }
+    if (selectedGodown) {
+      filtered = filtered.filter(s => s.godown_id === selectedGodown);
+    }
 
     setSales(filtered);
   };
@@ -46,10 +51,11 @@ export default function CounterSales() {
   useEffect(() => {
     load();
     api.get("/products").then(r => setProducts(r.data));
+    if (isAdmin) api.get("/godowns").then(r => setGodowns(r.data));
   }, []);
 
   const applyFilter = () => { load(); };
-  const clearFilter = () => { setStartDate(""); setEndDate(""); load(); };
+  const clearFilter = () => { setStartDate(""); setEndDate(""); setSelectedGodown(""); load(); };
 
   // ── New Sale Handlers ────────────────────────────────────────
   const updateItem = (index, field, value) => {
@@ -96,7 +102,8 @@ export default function CounterSales() {
         await api.post("/counter-sales", {
           product_id: item.product_id,
           quantity_units: totalBottles,
-          price_per_unit: parseFloat(item.price_per_unit || 0)
+          price_per_unit: parseFloat(item.price_per_unit || 0),
+          godown_id: isAdmin ? newGodown : undefined
         });
       }
       setModal(false);
@@ -111,7 +118,6 @@ export default function CounterSales() {
 
   // ── Edit Handlers ─────────────────────────────────────────────
   const openEdit = (sale) => {
-    if (!canEdit) return;
     const bpc = sale.bottles_per_case || 24;
     const cases = Math.floor(sale.quantity_units / bpc);
     const extra = sale.quantity_units % bpc;
@@ -138,7 +144,7 @@ export default function CounterSales() {
 
   const handleSubmitEdit = async (e) => {
     e.preventDefault();
-    if (!editModal || !canEdit) return;
+    if (!editModal) return;
     if (loadingEdit) return;
     setLoadingEdit(true);
     try {
@@ -169,7 +175,6 @@ export default function CounterSales() {
   };
 
   const handleDelete = async (id) => {
-    if (!canEdit) return;
     if (!confirm("Delete this sale? Inventory will be restored.")) return;
     try {
       await api.delete(`/counter-sales/${id}`);
@@ -205,19 +210,12 @@ export default function CounterSales() {
           <p style={{ fontSize: "15px", color: "#888", marginTop: "4px" }}>
             All sales • Latest on top
           </p>
-          {isAdmin && (
-            <p style={{ color: "#d97706", fontSize: "14px", marginTop: "4px" }}>
-              👁️ Admin View-Only Mode (No edit/delete allowed)
-            </p>
-          )}
         </div>
 
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          {canEdit && (
             <button className="btn-primary" onClick={() => { setItems([{ ...emptyItem }]); setModal(true); }}>
               + New Sale
             </button>
-          )}
         </div>
       </div>
 
@@ -250,6 +248,20 @@ export default function CounterSales() {
               onChange={e => setEndDate(e.target.value)}
             />
           </div>
+          {isAdmin && (
+            <div>
+              <label style={labelStyle}>Godown</label>
+              <select
+                className="input"
+                style={{ marginTop: "6px" }}
+                value={selectedGodown}
+                onChange={e => setSelectedGodown(e.target.value)}
+              >
+                <option value="">All Godowns</option>
+                {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: "flex", gap: "12px" }}>
             <button className="btn-primary" onClick={applyFilter} style={{ marginTop: "20px" }}>
               Apply Filter
@@ -266,7 +278,7 @@ export default function CounterSales() {
         <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
           <thead className="table-head">
             <tr>
-              {["Date", "Time", "Product", "Qty Sold", "Price / Bottle", "Total", "Actions"].map(h => (
+              {["Date", "Time", "Product", "Godown", "Qty Sold", "Price / Bottle", "Total", "Actions"].map(h => (
                 <th key={h} style={{ padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
@@ -292,6 +304,9 @@ export default function CounterSales() {
                   <td style={{ fontWeight: 600, fontSize: "16px", padding: "16px" }}>
                     {s.product_name}
                   </td>
+                  <td style={{ color: "#888", fontSize: "14px", padding: "16px" }}>
+                    {s.godown_name || "—"}
+                  </td>
                   <td style={{ fontSize: "15px", fontWeight: 500, padding: "16px" }}>
                     {qtyText}
                   </td>
@@ -302,12 +317,10 @@ export default function CounterSales() {
                     ₹{Number(s.total_amount).toLocaleString()}
                   </td>
                   <td style={{ padding: "16px" }}>
-                    {canEdit && (
-                      <div style={{ display: "flex", gap: "16px" }}>
-                        <button onClick={() => openEdit(s)} style={actionBtn("#2563eb")}>Edit</button>
-                        <button onClick={() => handleDelete(s.id)} style={actionBtn("#aaaaaa")}>Delete</button>
-                      </div>
-                    )}
+                    <div style={{ display: "flex", gap: "16px" }}>
+                      <button onClick={() => openEdit(s)} style={actionBtn("#2563eb")}>Edit</button>
+                      <button onClick={() => handleDelete(s.id)} style={actionBtn("#aaaaaa")}>Delete</button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -325,7 +338,7 @@ export default function CounterSales() {
       </div>
 
       {/* New Sale Modal */}
-      {modal && canEdit && (
+      {modal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: "720px", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>
@@ -335,6 +348,15 @@ export default function CounterSales() {
             </div>
 
             <form onSubmit={handleSubmitNew}>
+              {isAdmin && (
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={labelStyle}>Godown</label>
+                  <select className="input" style={{ marginTop: "6px" }} value={newGodown} onChange={e => setNewGodown(e.target.value)} required>
+                    <option value="">Select Godown</option>
+                    {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                </div>
+              )}
               {items.map((item, i) => {
                 const selectedProduct = products.find(p => p.id === item.product_id);
                 const bpc = selectedProduct?.bottles_per_case || 24;
@@ -415,7 +437,7 @@ export default function CounterSales() {
       )}
 
       {/* Edit Modal */}
-      {editModal && canEdit && (
+      {editModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: "720px", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ borderBottom: "2px solid #f0f0f0", paddingBottom: "16px", marginBottom: "20px" }}>

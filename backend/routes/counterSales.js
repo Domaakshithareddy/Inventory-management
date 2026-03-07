@@ -6,9 +6,10 @@ const auth = require('../middleware/auth');
 router.get('/', auth, async (req, res) => {
   const { role, godown_id } = req.user;
   let query = `
-    SELECT cs.*, p.name as product_name, p.bottles_per_case
+    SELECT cs.*, p.name as product_name, p.bottles_per_case, g.name as godown_name
     FROM counter_sales cs 
     JOIN products p ON cs.product_id = p.id
+    LEFT JOIN godowns g ON cs.godown_id = g.id
   `;
   const params = [];
   if (role !== 'admin') {
@@ -22,10 +23,9 @@ router.get('/', auth, async (req, res) => {
 
 // POST
 router.post('/', auth, async (req, res) => {
-  if (req.user.role === 'admin') return res.status(403).json({ error: 'Admins cannot create sales' });
-
   const { product_id, quantity_units, price_per_unit } = req.body;
-  const godown_id = req.user.godown_id;
+  const godown_id = req.user.godown_id || req.body.godown_id;
+  if (!godown_id) return res.status(400).json({ error: 'Godown required' });
   const total_amount = parseFloat(quantity_units) * parseFloat(price_per_unit);
 
   const client = await pool.connect();
@@ -74,10 +74,10 @@ router.post('/', auth, async (req, res) => {
 
 // PUT - Edit
 router.put('/:id', auth, async (req, res) => {
-  if (req.user.role === 'admin') return res.status(403).json({ error: 'Admins cannot edit sales' });
 
   const { product_id, quantity_units, price_per_unit } = req.body;
-  const godown_id = req.user.godown_id;
+  const godown_id = req.user.godown_id || req.body.godown_id;
+  if (!godown_id) return res.status(400).json({ error: 'Godown required' });
 
   const client = await pool.connect();
   try {
@@ -141,7 +141,6 @@ router.put('/:id', auth, async (req, res) => {
 
 // DELETE
 router.delete('/:id', auth, async (req, res) => {
-  if (req.user.role === 'admin') return res.status(403).json({ error: 'Admins cannot delete sales' });
 
   const client = await pool.connect();
   try {

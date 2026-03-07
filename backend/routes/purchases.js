@@ -14,7 +14,7 @@ router.get('/', auth, async (req, res) => {
     query += ` WHERE pu.godown_id = $1`;
     params.push(req.user.godown_id);
   }
-  query += ` ORDER BY pu.purchase_date DESC`;
+  query += ` ORDER BY pu.purchase_date DESC, pu.created_at DESC`;
   const result = await pool.query(query, params);
   res.json(result.rows);
 });
@@ -73,6 +73,12 @@ router.post('/', auth, async (req, res) => {
       );
     }
 
+    // Increase company outstanding by full purchase amount, decrease by what's already paid
+    await client.query(
+      `UPDATE companies SET outstanding_balance = outstanding_balance + $1 WHERE id = $2`,
+      [total_amount - paid, company_id]
+    );
+
     await client.query('COMMIT');
     res.json(purchase.rows[0]);
   } catch (err) {
@@ -96,6 +102,16 @@ router.post('/:id/payment', auth, async (req, res) => {
     `UPDATE purchases SET paid_amount=$1, payment_status=$2 WHERE id=$3 RETURNING *`,
     [new_paid, status, req.params.id]
   );
+
+  // Reduce company outstanding by the newly paid amount
+  const newly_paid = new_paid - already_paid;
+  if (newly_paid > 0) {
+    await pool.query(
+      `UPDATE companies SET outstanding_balance = outstanding_balance - $1 WHERE id = $2`,
+      [newly_paid, p.company_id]
+    );
+  }
+
   res.json(result.rows[0]);
 });
 
@@ -119,6 +135,17 @@ router.delete('/:id', auth, async (req, res) => {
 
     await client.query(`DELETE FROM purchase_items WHERE purchase_id=$1`, [req.params.id]);
     await client.query(`DELETE FROM purchases WHERE id=$1`, [req.params.id]);
+
+    // Reverse outstanding — only the unpaid portion was outstanding
+    const p = purchase.rows[0];
+    const unpaid = parseFloat(p.total_amount) - parseFloat(p.paid_amount || 0);
+    if (unpaid > 0) {
+      await client.query(
+        `UPDATE companies SET outstanding_balance = outstanding_balance - $1 WHERE id = $2`,
+        [unpaid, p.company_id]
+      );
+    }
+
     await client.query('COMMIT');
     res.json({ message: 'Deleted and inventory reversed' });
   } catch (err) {
